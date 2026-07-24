@@ -27,6 +27,15 @@ export interface RegisterResponse {
   user: PublicUser;
 }
 
+export interface LoginResponse {
+  loginUrl: string;
+}
+
+export interface SessionResponse {
+  authenticated: true;
+  user: PublicUser;
+}
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {
