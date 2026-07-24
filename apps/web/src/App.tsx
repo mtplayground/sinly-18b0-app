@@ -1,17 +1,40 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
+  AlertCircle,
+  ArrowRight,
   Clock3,
   Crown,
   KeyRound,
+  Loader2,
+  LogIn,
   type LucideIcon,
   MapPinned,
+  RefreshCw,
   Search,
+  ShieldCheck,
   UserRound,
 } from "lucide-react";
-import type { HealthResponse, MobileRouteDefinition, MobileRouteKey } from "@sinly/shared";
+import type {
+  HealthResponse,
+  MobileRouteDefinition,
+  MobileRouteKey,
+  PublicUser,
+} from "@sinly/shared";
 import { mobileRoutes } from "@sinly/shared";
+import {
+  ApiRequestError,
+  getSession,
+  loadHealth,
+  loadMobileShell,
+  requestLogin,
+  requestRegister,
+  type MobileShellResponse,
+} from "./api";
 
 type ApiState = "checking" | "ready" | "offline";
+type AuthMode = "login" | "register";
+type AuthStatus = "checking" | "guest" | "authenticated";
+type SubmitState = "idle" | "submitting";
 
 const defaultRoute = mobileRoutes[0] as MobileRouteDefinition | undefined;
 
@@ -43,30 +66,77 @@ function routeDescription(route: MobileRouteDefinition): string {
   return descriptions[route.key];
 }
 
-async function loadHealth(): Promise<HealthResponse> {
-  const response = await fetch("/api/health", {
-    headers: { Accept: "application/json" },
-  });
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
-  if (!response.ok) {
-    throw new Error(`Health check failed with ${response.status}`);
+function userDisplayName(user: PublicUser): string {
+  return user.name?.trim() || user.account || user.email;
+}
+
+function statusLabel(apiState: ApiState): string {
+  if (apiState === "ready") {
+    return "云端已连接";
   }
 
-  return (await response.json()) as HealthResponse;
+  if (apiState === "checking") {
+    return "加载云端";
+  }
+
+  return "云端异常";
 }
 
 export function App() {
   const [activeRouteKey, setActiveRouteKey] = useState<MobileRouteKey>("query");
   const [apiState, setApiState] = useState<ApiState>("checking");
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [email, setEmail] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitState, setSubmitState] = useState<SubmitState>("idle");
+  const [user, setUser] = useState<PublicUser | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [mobileShell, setMobileShell] = useState<MobileShellResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    loadHealth()
+    getSession()
       .then((payload) => {
         if (!cancelled) {
-          setHealth(payload);
+          setUser(payload.user);
+          setAuthStatus("authenticated");
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          if (error instanceof ApiRequestError && error.status === 401) {
+            setAuthStatus("guest");
+          } else {
+            setAuthStatus("guest");
+            setFormError("暂时无法校验登录态，请稍后重试。");
+          }
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") {
+      setApiState("checking");
+      return;
+    }
+
+    let cancelled = false;
+
+    Promise.all([loadHealth(), loadMobileShell()])
+      .then(([healthPayload, shellPayload]) => {
+        if (!cancelled) {
+          setHealth(healthPayload);
+          setMobileShell(shellPayload);
           setApiState("ready");
         }
       })
@@ -79,28 +149,174 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authStatus]);
 
   const activeRoute = useMemo(
-    () => mobileRoutes.find((route) => route.key === activeRouteKey) ?? fallbackRoute,
-    [activeRouteKey],
+    () =>
+      (mobileShell?.routes ?? mobileRoutes).find((route) => route.key === activeRouteKey) ??
+      fallbackRoute,
+    [activeRouteKey, mobileShell],
   );
 
   const ActiveIcon = iconByRoute[activeRoute.key];
+
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(normalizedEmail)) {
+      setFormError("请输入有效的邮箱地址。");
+      return;
+    }
+
+    setSubmitState("submitting");
+    setFormError(null);
+
+    try {
+      if (authMode === "login") {
+        const payload = await requestLogin();
+        window.location.assign(payload.loginUrl);
+        return;
+      }
+
+      const payload = await requestRegister(normalizedEmail);
+      setUser(payload.user);
+      setAuthStatus("authenticated");
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.loginUrl) {
+        window.location.assign(error.loginUrl);
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "AUTH_NOT_CONFIGURED") {
+        setFormError("认证服务暂未配置，请稍后再试。");
+      } else if (error instanceof ApiRequestError && error.code === "INVALID_EMAIL") {
+        setFormError("邮箱格式不正确。");
+      } else {
+        setFormError("请求失败，请检查网络后重试。");
+      }
+      setSubmitState("idle");
+    }
+  }
+
+  if (authStatus === "checking") {
+    return (
+      <main className="app-shell auth-shell">
+        <section className="auth-panel" aria-live="polite">
+          <Loader2 className="spin" size={26} />
+          <h1>正在校验登录态</h1>
+          <p>请稍候，正在从云端读取会话。</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (authStatus === "guest") {
+    return (
+      <main className="app-shell auth-shell">
+        <section className="auth-panel" aria-labelledby="auth-title">
+          <div className="auth-icon" aria-hidden="true">
+            <ShieldCheck size={28} />
+          </div>
+          <p className="eyebrow">账号访问</p>
+          <h1 id="auth-title">{authMode === "login" ? "登录" : "注册"}</h1>
+          <p className="auth-copy">
+            使用邮箱完成身份校验。提交后会跳转到平台认证页，认证成功后回到当前应用。
+          </p>
+
+          <div className="segmented" role="tablist" aria-label="账号操作">
+            <button
+              type="button"
+              className={authMode === "login" ? "segment segment-active" : "segment"}
+              aria-selected={authMode === "login"}
+              onClick={() => {
+                setAuthMode("login");
+                setFormError(null);
+              }}
+            >
+              登录
+            </button>
+            <button
+              type="button"
+              className={authMode === "register" ? "segment segment-active" : "segment"}
+              aria-selected={authMode === "register"}
+              onClick={() => {
+                setAuthMode("register");
+                setFormError(null);
+              }}
+            >
+              注册
+            </button>
+          </div>
+
+          <form className="auth-form" onSubmit={handleAuthSubmit} noValidate>
+            <label htmlFor="email">邮箱</label>
+            <input
+              id="email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="name@example.com"
+              value={email}
+              aria-invalid={Boolean(formError)}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+
+            {formError ? (
+              <p className="form-error" role="alert">
+                <AlertCircle size={16} />
+                {formError}
+              </p>
+            ) : null}
+
+            <button
+              className="primary-action"
+              type="submit"
+              disabled={submitState === "submitting"}
+            >
+              {submitState === "submitting" ? (
+                <Loader2 className="spin" size={19} />
+              ) : (
+                <LogIn size={19} />
+              )}
+              <span>{authMode === "login" ? "继续登录" : "继续注册"}</span>
+              <ArrowRight size={18} />
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
       <section className="workspace" aria-labelledby="screen-title">
         <div className="topbar">
           <div>
-            <p className="eyebrow">H5 单页应用</p>
-            <h1 id="screen-title">移动端查询工作台</h1>
+            <p className="eyebrow">已登录</p>
+            <h1 id="screen-title">查询工作台</h1>
           </div>
           <div className={`status-pill status-${apiState}`}>
             <span aria-hidden="true" />
-            {apiState === "ready" ? "API 正常" : apiState === "checking" ? "检查中" : "API 离线"}
+            {statusLabel(apiState)}
           </div>
         </div>
+
+        {user ? (
+          <div className="profile-strip">
+            {user.pictureUrl ? (
+              <img src={user.pictureUrl} alt="" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="avatar-fallback" aria-hidden="true">
+                <UserRound size={22} />
+              </div>
+            )}
+            <div>
+              <strong>{userDisplayName(user)}</strong>
+              <span>{user.email}</span>
+            </div>
+          </div>
+        ) : null}
 
         <div className="panel">
           <div className="panel-title">
@@ -117,18 +333,18 @@ export function App() {
           </div>
         </div>
 
-        <div className="structure-list" aria-label="项目结构">
+        <div className="structure-list" aria-label="云端数据">
           <div>
-            <strong>前端</strong>
-            <span>React + Vite + TypeScript</span>
+            <strong>会话</strong>
+            <span>{user ? "已同步" : "未同步"}</span>
           </div>
           <div>
-            <strong>后端</strong>
-            <span>Express API, 生产端口 8080</span>
+            <strong>导航</strong>
+            <span>{mobileShell ? `${mobileShell.routes.length} 个入口` : "加载中"}</span>
           </div>
           <div>
-            <strong>共享</strong>
-            <span>统一 DTO 与路由元数据</span>
+            <strong>会员</strong>
+            <span>{user?.membershipStatus ?? "none"}</span>
           </div>
         </div>
 
@@ -137,11 +353,16 @@ export function App() {
             服务版本 {health.version}, 已运行 {health.uptimeSeconds}s, 数据库{" "}
             {health.database.latencyMs}ms
           </p>
-        ) : null}
+        ) : (
+          <p className="health-line health-warning">
+            <RefreshCw size={14} />
+            云端数据仍在加载或暂不可用。
+          </p>
+        )}
       </section>
 
       <nav className="bottom-tabs" aria-label="主导航">
-        {mobileRoutes.map((route) => {
+        {(mobileShell?.routes ?? mobileRoutes).map((route) => {
           const Icon = iconByRoute[route.key];
           const selected = route.key === activeRouteKey;
 
