@@ -13,7 +13,6 @@ import type {
   MobileRouteDefinition,
   PaymentOrderRequest,
   PaymentOrderResponse,
-  RegisterResponse,
   ResultExportFormat,
   ResultExportRequest,
   SearchHistoryListResponse,
@@ -92,13 +91,6 @@ export function requestLogin(): Promise<LoginResponse> {
   return requestJson<LoginResponse>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({}),
-  });
-}
-
-export function requestRegister(email: string): Promise<RegisterResponse> {
-  return requestJson<RegisterResponse>("/api/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email }),
   });
 }
 
