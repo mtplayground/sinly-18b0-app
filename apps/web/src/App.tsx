@@ -11,7 +11,7 @@ import {
   KeyRound,
   LockKeyhole,
   Loader2,
-  LogIn,
+  MessageCircle,
   type LucideIcon,
   MapPin,
   MapPinned,
@@ -1053,12 +1053,12 @@ export function App() {
         <main className="app-shell auth-shell">
           <section className="auth-panel" aria-labelledby="auth-title">
             <div className="auth-icon" aria-hidden="true">
-              <ShieldCheck size={28} />
+              <MessageCircle size={28} />
             </div>
             <p className="eyebrow">账号访问</p>
-            <h1 id="auth-title">登录</h1>
+            <h1 id="auth-title">微信授权登录</h1>
             <p className="auth-copy">
-              使用平台账号统一登录。邮箱与账号信息会在登录成功后从安全会话中读取。
+              使用微信一键授权登录，登录成功后自动进入查询工具。
             </p>
 
             <div className="auth-form">
@@ -1078,9 +1078,9 @@ export function App() {
                 {submitState === "submitting" ? (
                   <Loader2 className="spin" size={19} />
                 ) : (
-                  <LogIn size={19} />
+                  <MessageCircle size={19} />
                 )}
-                <span>使用平台账号登录</span>
+                <span>微信一键授权登录</span>
                 <ArrowRight size={18} />
               </button>
             </div>
