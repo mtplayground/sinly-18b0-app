@@ -61,6 +61,8 @@ export function buildLoginUrl(
   const loginUrl = new URL("/login", auth.authUrl);
   loginUrl.searchParams.set("app_token", auth.appToken);
   loginUrl.searchParams.set("return_to", new URL("/", publicOrigin(req, server)).toString());
+  loginUrl.searchParams.set("provider", "wechat");
+  loginUrl.searchParams.set("mode", "one_tap");
   return loginUrl.toString();
 }
 
