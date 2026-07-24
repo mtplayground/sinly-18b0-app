@@ -24,8 +24,9 @@ import type {
   MobileRouteDefinition,
   MobileRouteKey,
   PublicUser,
+  RegionSelection,
 } from "@sinly/shared";
-import { apiKeyPlatforms, mobileRoutes } from "@sinly/shared";
+import { apiKeyPlatforms, chinaRegions, findRegionSelection, mobileRoutes } from "@sinly/shared";
 import {
   ApiRequestError,
   createApiKey,
@@ -58,6 +59,19 @@ if (!defaultRoute) {
 }
 
 const fallbackRoute: MobileRouteDefinition = defaultRoute;
+
+function firstOrThrow<Item>(items: readonly Item[], message: string): Item {
+  const item = items[0];
+  if (!item) {
+    throw new Error(message);
+  }
+
+  return item;
+}
+
+const defaultProvince = firstOrThrow(chinaRegions, "At least one China region must be defined");
+const defaultCity = firstOrThrow(defaultProvince.cities, "At least one city must be defined");
+const defaultCounty = firstOrThrow(defaultCity.counties, "At least one county must be defined");
 
 const defaultKeyForms: Record<ApiKeyPlatform, ApiKeyFormState> = {
   amap: { apiKey: "", label: "高德地图" },
@@ -135,6 +149,9 @@ export function App() {
   const [keySyncState, setKeySyncState] = useState<KeySyncState>("idle");
   const [keyError, setKeyError] = useState<string | null>(null);
   const [keySavingPlatform, setKeySavingPlatform] = useState<ApiKeyPlatform | null>(null);
+  const [selectedProvinceCode, setSelectedProvinceCode] = useState(defaultProvince.code);
+  const [selectedCityCode, setSelectedCityCode] = useState(defaultCity.code);
+  const [selectedCountyCode, setSelectedCountyCode] = useState(defaultCounty.code);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,6 +249,14 @@ export function App() {
 
   const ActiveIcon = iconByRoute[activeRoute.key];
   const selectedKey = keyByPlatform(apiKeys, selectedPlatform);
+  const selectedRegion: RegionSelection = findRegionSelection(
+    selectedProvinceCode,
+    selectedCityCode,
+    selectedCountyCode,
+  );
+  const availableCities = selectedRegion.province.cities;
+  const availableCounties = selectedRegion.city.counties;
+  const regionPath = `${selectedRegion.province.name} / ${selectedRegion.city.name} / ${selectedRegion.county.name}`;
 
   function setPlatformForm(platform: ApiKeyPlatform, patch: Partial<ApiKeyFormState>) {
     setKeyForms((current) => ({
@@ -295,6 +320,31 @@ export function App() {
     } finally {
       setKeySavingPlatform(null);
     }
+  }
+
+  function handleProvinceChange(provinceCode: string) {
+    const province = chinaRegions.find((item) => item.code === provinceCode) ?? defaultProvince;
+    const city = firstOrThrow(province.cities, "At least one city must be defined");
+    const county = firstOrThrow(city.counties, "At least one county must be defined");
+
+    setSelectedProvinceCode(province.code);
+    setSelectedCityCode(city.code);
+    setSelectedCountyCode(county.code);
+  }
+
+  function handleCityChange(cityCode: string) {
+    const city = availableCities.find((item) => item.code === cityCode) ?? availableCities[0];
+    if (!city) {
+      return;
+    }
+
+    const county = city.counties[0];
+    if (!county) {
+      return;
+    }
+
+    setSelectedCityCode(city.code);
+    setSelectedCountyCode(county.code);
   }
 
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
@@ -475,7 +525,71 @@ export function App() {
           })}
         </section>
 
-        {activeRoute.key === "keys" ? (
+        {activeRoute.key === "query" ? (
+          <section className="region-panel" aria-labelledby="region-selector-title">
+            <div className="panel-title">
+              <ActiveIcon size={22} />
+              <div>
+                <h2 id="region-selector-title">地区选择</h2>
+                <p>{activeRoute.apiNamespace}</p>
+              </div>
+            </div>
+            <p className="panel-copy">{routeDescription(activeRoute)}</p>
+
+            <div className="region-select-grid">
+              <label htmlFor="province-select">
+                <span>省</span>
+                <select
+                  id="province-select"
+                  value={selectedProvinceCode}
+                  onChange={(event) => handleProvinceChange(event.target.value)}
+                >
+                  {chinaRegions.map((province) => (
+                    <option key={province.code} value={province.code}>
+                      {province.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label htmlFor="city-select">
+                <span>市</span>
+                <select
+                  id="city-select"
+                  value={selectedRegion.city.code}
+                  onChange={(event) => handleCityChange(event.target.value)}
+                >
+                  {availableCities.map((city) => (
+                    <option key={city.code} value={city.code}>
+                      {city.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label htmlFor="county-select">
+                <span>县 / 区</span>
+                <select
+                  id="county-select"
+                  value={selectedRegion.county.code}
+                  onChange={(event) => setSelectedCountyCode(event.target.value)}
+                >
+                  {availableCounties.map((county) => (
+                    <option key={county.code} value={county.code}>
+                      {county.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="region-current" aria-label="当前地区">
+              <strong>{selectedRegion.county.name}</strong>
+              <span>{regionPath}</span>
+              <small>行政区划代码 {selectedRegion.county.code}</small>
+            </div>
+          </section>
+        ) : activeRoute.key === "keys" ? (
           <section className="key-settings" aria-labelledby="key-settings-title">
             <div className="section-heading">
               <div>
@@ -591,6 +705,7 @@ export function App() {
             <p className="panel-copy">{routeDescription(activeRoute)}</p>
             <div className="route-meta">
               <span>当前平台 {platformLabels[selectedPlatform]}</span>
+              <span>当前地区 {regionPath}</span>
               <span>{selectedKey ? `Key ${selectedKey.maskedKey}` : "Key 未配置"}</span>
             </div>
           </div>
@@ -604,6 +719,10 @@ export function App() {
           <div>
             <strong>导航</strong>
             <span>{mobileShell ? `${mobileShell.routes.length} 个入口` : "加载中"}</span>
+          </div>
+          <div>
+            <strong>地区</strong>
+            <span>{selectedRegion.county.name}</span>
           </div>
           <div>
             <strong>会员</strong>

@@ -26,7 +26,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -515,6 +516,73 @@ h2 {
 .danger-action:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+.region-panel {
+  border: 1px solid rgba(31, 36, 40, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 42px rgba(31, 36, 40, 0.09);
+  padding: 18px;
+}
+
+.region-select-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.region-select-grid label {
+  display: grid;
+  gap: 6px;
+  color: #2f3842;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.region-select-grid select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(31, 36, 40, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17212b;
+  padding: 0 12px;
+}
+
+.region-select-grid select:focus {
+  border-color: #157e73;
+  box-shadow: 0 0 0 3px rgba(21, 126, 115, 0.14);
+  outline: none;
+}
+
+.region-current {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  border: 1px solid rgba(21, 126, 115, 0.18);
+  border-radius: 8px;
+  background: #e1f2ec;
+  padding: 12px;
+}
+
+.region-current strong,
+.region-current span,
+.region-current small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.region-current strong {
+  color: #17212b;
+  font-size: 17px;
+}
+
+.region-current span,
+.region-current small {
+  color: #53606b;
+  font-size: 13px;
 }
 
 .panel-title {
