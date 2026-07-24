@@ -1,4 +1,9 @@
 import type {
+  ApiKeyDeleteResponse,
+  ApiKeyListResponse,
+  ApiKeyPlatform,
+  ApiKeyResponse,
+  ApiKeySaveRequest,
   HealthResponse,
   LoginResponse,
   MobileRouteDefinition,
@@ -88,4 +93,31 @@ export function loadHealth(): Promise<HealthResponse> {
 
 export function loadMobileShell(): Promise<MobileShellResponse> {
   return requestJson<MobileShellResponse>("/api/mobile-shell");
+}
+
+export function listApiKeys(): Promise<ApiKeyListResponse> {
+  return requestJson<ApiKeyListResponse>("/api/api-keys");
+}
+
+export function createApiKey(input: ApiKeySaveRequest): Promise<ApiKeyResponse> {
+  return requestJson<ApiKeyResponse>("/api/api-keys", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateApiKey(
+  platform: ApiKeyPlatform,
+  input: ApiKeySaveRequest,
+): Promise<ApiKeyResponse> {
+  return requestJson<ApiKeyResponse>(`/api/api-keys/${platform}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteApiKey(platform: ApiKeyPlatform): Promise<ApiKeyDeleteResponse> {
+  return requestJson<ApiKeyDeleteResponse>(`/api/api-keys/${platform}`, {
+    method: "DELETE",
+  });
 }
