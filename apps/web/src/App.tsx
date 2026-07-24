@@ -5,7 +5,9 @@ import {
   CheckCircle2,
   Clock3,
   Crown,
+  CreditCard,
   Download,
+  ExternalLink,
   KeyRound,
   LockKeyhole,
   Loader2,
@@ -14,6 +16,7 @@ import {
   MapPin,
   MapPinned,
   Phone,
+  QrCode,
   RefreshCw,
   Save,
   Search,
@@ -30,6 +33,8 @@ import type {
   MapPoiResult,
   MobileRouteDefinition,
   MobileRouteKey,
+  PaymentOrderSummary,
+  PaymentProvider,
   PublicUser,
   RegionSelection,
   ResultExportFormat,
@@ -38,8 +43,10 @@ import { apiKeyPlatforms, chinaRegions, findRegionSelection, mobileRoutes } from
 import {
   ApiRequestError,
   createApiKey,
+  createPaymentOrder,
   deleteApiKey,
   exportResults,
+  getPaymentOrder,
   getSession,
   listApiKeys,
   loadHealth,
@@ -60,6 +67,7 @@ type KeySyncState = "idle" | "loading" | "ready" | "error";
 type QueryState = "idle" | "searching" | "done" | "error";
 type QueryMode = "single" | "batch";
 type ExportState = "idle" | "exporting" | "error";
+type PaymentState = "idle" | "creating" | "pending" | "checking" | "paid" | "error";
 
 interface ApiKeyFormState {
   apiKey: string;
@@ -101,6 +109,31 @@ const platformLabels: Record<ApiKeyPlatform, string> = {
 
 const FREE_RESULT_LIMIT = 10;
 const MAX_BATCH_KEYWORDS = 5;
+const ANNUAL_PRICE_CENTS = 19900;
+
+const paymentProviderLabels: Record<PaymentProvider, string> = {
+  alipay: "支付宝",
+  wechat: "微信支付",
+};
+
+const membershipBenefits = [
+  {
+    title: "批量关键词查询",
+    copy: "一次提交多个关键词，合并官方 API 返回结果。",
+  },
+  {
+    title: "自动去重与整理",
+    copy: "自动合并重复商家，并规范电话、地址字段。",
+  },
+  {
+    title: "三平台 Key 管理",
+    copy: "高德、百度、腾讯 Key 独立保存，按当前平台查询。",
+  },
+  {
+    title: "Excel / CSV 导出",
+    copy: "将整理后的结果导出，保留合规使用提示。",
+  },
+] as const;
 
 const iconByRoute: Record<MobileRouteKey, LucideIcon> = {
   query: Search,
@@ -116,7 +149,7 @@ function routeDescription(route: MobileRouteDefinition): string {
     query: "核心查询入口会使用当前选择的平台 Key 发起云端查询。",
     results: "展示去重后的查询结果，并对电话、地址等字段做格式整理。",
     keys: "管理三平台 Key，并切换当前查询平台。",
-    membership: "预留会员状态、开通续费与权益提示入口。",
+    membership: "开通或续费年会员，解锁批量查询、整理与导出。",
     history: "预留查询历史筛选与复用入口。",
     profile: "预留账号信息、设置与常用操作入口。",
   };
@@ -130,6 +163,35 @@ function isValidEmail(email: string): boolean {
 
 function userDisplayName(user: PublicUser): string {
   return user.name?.trim() || user.account || user.email;
+}
+
+function formatPrice(cents: number, currency = "CNY"): string {
+  const amount = cents / 100;
+  if (currency === "CNY") {
+    return `¥${amount.toFixed(0)}`;
+  }
+
+  return `${currency} ${amount.toFixed(2)}`;
+}
+
+function paymentStatusLabel(order: PaymentOrderSummary | null): string {
+  if (!order) {
+    return "待下单";
+  }
+
+  if (order.status === "paid") {
+    return "已支付";
+  }
+
+  if (order.status === "failed") {
+    return "支付异常";
+  }
+
+  if (order.status === "cancelled") {
+    return "已取消";
+  }
+
+  return "待支付";
 }
 
 function statusLabel(apiState: ApiState): string {
@@ -210,6 +272,11 @@ export function App() {
   const [latestSearch, setLatestSearch] = useState<
     KeywordSearchResponse | BatchKeywordSearchResponse | null
   >(null);
+  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>("alipay");
+  const [paymentState, setPaymentState] = useState<PaymentState>("idle");
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
+  const [paymentOrder, setPaymentOrder] = useState<PaymentOrderSummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -329,6 +396,10 @@ export function App() {
   const availableCities = selectedRegion.province.cities;
   const availableCounties = selectedRegion.city.counties;
   const regionPath = `${selectedRegion.province.name} / ${selectedRegion.city.name} / ${selectedRegion.county.name}`;
+  const annualPrice = formatPrice(
+    paymentOrder?.amountCents ?? ANNUAL_PRICE_CENTS,
+    paymentOrder?.currency,
+  );
 
   function setPlatformForm(platform: ApiKeyPlatform, patch: Partial<ApiKeyFormState>) {
     setKeyForms((current) => ({
@@ -582,6 +653,90 @@ export function App() {
       }
 
       setExportError("导出失败，请稍后重试。");
+    }
+  }
+
+  async function refreshSessionUser() {
+    const payload = await getSession();
+    setUser(payload.user);
+    setAuthStatus("authenticated");
+  }
+
+  async function handleCreatePaymentOrder() {
+    setPaymentState("creating");
+    setPaymentError(null);
+    setPaymentNotice(null);
+
+    try {
+      const payload = await createPaymentOrder({ provider: paymentProvider });
+      setPaymentOrder(payload.order);
+
+      if (payload.paymentUrl) {
+        setPaymentState("pending");
+        setPaymentNotice("支付订单已创建，正在打开支付页。");
+        window.location.assign(payload.paymentUrl);
+        return;
+      }
+
+      setPaymentState("pending");
+      setPaymentNotice(
+        payload.configured ? payload.message : "支付服务暂未配置，订单已创建但暂不能跳转付款。",
+      );
+    } catch (error) {
+      setPaymentState("error");
+
+      if (error instanceof ApiRequestError && error.loginUrl) {
+        window.location.assign(error.loginUrl);
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "INVALID_PAYMENT_PROVIDER") {
+        setPaymentError("请选择支付方式。");
+        return;
+      }
+
+      setPaymentError("创建支付订单失败，请稍后重试。");
+    }
+  }
+
+  async function handleRefreshPaymentOrder() {
+    if (!paymentOrder) {
+      setPaymentNotice("暂无支付订单。");
+      return;
+    }
+
+    setPaymentState("checking");
+    setPaymentError(null);
+    setPaymentNotice(null);
+
+    try {
+      const payload = await getPaymentOrder(paymentOrder.id);
+      setPaymentOrder(payload.order);
+
+      if (payload.order.status === "paid") {
+        setPaymentState("paid");
+        setPaymentNotice("支付已确认，会员状态已刷新。");
+        await refreshSessionUser();
+        return;
+      }
+
+      if (payload.order.status === "failed" || payload.order.status === "cancelled") {
+        setPaymentState("error");
+        setPaymentError("支付未完成，请重新下单。");
+        return;
+      }
+
+      setPaymentState("pending");
+      setPaymentNotice("支付尚未确认，请完成支付后再刷新。");
+    } catch (error) {
+      setPaymentState("error");
+
+      if (error instanceof ApiRequestError && error.loginUrl) {
+        window.location.assign(error.loginUrl);
+        return;
+      }
+
+      setPaymentError("支付状态刷新失败，请稍后重试。");
     }
   }
 
@@ -1255,6 +1410,162 @@ export function App() {
                 ) : null}
               </>
             )}
+          </section>
+        ) : activeRoute.key === "membership" ? (
+          <section className="membership-panel" aria-labelledby="membership-title">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">年会员权益</p>
+                <h2 id="membership-title">会员开通 / 续费</h2>
+              </div>
+              <div className={isAnnualMember ? "member-pill member-active" : "member-pill"}>
+                {isAnnualMember ? <Crown size={15} /> : <LockKeyhole size={15} />}
+                <span>{isAnnualMember ? "已开通" : "免费账号"}</span>
+              </div>
+            </div>
+
+            <div className="membership-plan">
+              <div className="plan-top">
+                <div>
+                  <span>一年期会员</span>
+                  <strong className="price-line">
+                    {annualPrice}
+                    <small>/ 年</small>
+                  </strong>
+                </div>
+                <ShieldCheck size={30} />
+              </div>
+              <p>
+                解锁批量查询、结果整理、多 Key 管理与 Excel / CSV 导出，查询仍使用你的官方平台 Key
+                与自有额度。
+              </p>
+            </div>
+
+            {!isAnnualMember && lockedResultCount > 0 ? (
+              <div className="membership-preview-bridge" role="note">
+                <LockKeyhole size={18} />
+                <span>
+                  当前结果预览已展示 {visibleResults.length} 条，还有 {lockedResultCount}{" "}
+                  条开通后可查看。
+                </span>
+              </div>
+            ) : null}
+
+            {isAnnualMember ? (
+              <div className="membership-active-note" role="note">
+                <Crown size={18} />
+                <span>当前账号已是年会员，续费会在现有有效期后顺延一年。</span>
+              </div>
+            ) : null}
+
+            <div className="benefit-grid" aria-label="会员权益">
+              {membershipBenefits.map((benefit) => (
+                <div className="benefit-item" key={benefit.title}>
+                  <div className="benefit-icon">
+                    <CheckCircle2 size={17} />
+                  </div>
+                  <div>
+                    <strong>{benefit.title}</strong>
+                    <span>{benefit.copy}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="payment-box">
+              <div className="payment-box-head">
+                <div>
+                  <strong>支付方式</strong>
+                  <span>选择后创建开通 / 续费订单</span>
+                </div>
+                <QrCode size={22} />
+              </div>
+
+              <div className="payment-provider-grid" role="radiogroup" aria-label="支付方式">
+                {(["alipay", "wechat"] as const).map((provider) => (
+                  <button
+                    key={provider}
+                    type="button"
+                    className={
+                      paymentProvider === provider
+                        ? "payment-provider payment-provider-active"
+                        : "payment-provider"
+                    }
+                    aria-pressed={paymentProvider === provider}
+                    onClick={() => {
+                      setPaymentProvider(provider);
+                      setPaymentError(null);
+                      setPaymentNotice(null);
+                    }}
+                  >
+                    <CreditCard size={18} />
+                    <span>{paymentProviderLabels[provider]}</span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="membership-pay-action"
+                disabled={paymentState === "creating" || paymentState === "checking"}
+                onClick={() => void handleCreatePaymentOrder()}
+              >
+                {paymentState === "creating" ? (
+                  <Loader2 className="spin" size={18} />
+                ) : (
+                  <CreditCard size={18} />
+                )}
+                <span>{isAnnualMember ? "续费一年" : "开通年会员"}</span>
+                <ArrowRight size={17} />
+              </button>
+
+              {paymentOrder ? (
+                <div className="payment-order-strip" aria-label="支付订单">
+                  <div className="payment-order-meta">
+                    <strong>{paymentStatusLabel(paymentOrder)}</strong>
+                    <span>
+                      {paymentProviderLabels[paymentOrder.provider]} ·{" "}
+                      {paymentOrder.providerOrderId}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-action"
+                    title="刷新支付状态"
+                    aria-label="刷新支付状态"
+                    disabled={paymentState === "checking"}
+                    onClick={() => void handleRefreshPaymentOrder()}
+                  >
+                    {paymentState === "checking" ? (
+                      <Loader2 className="spin" size={17} />
+                    ) : (
+                      <RefreshCw size={17} />
+                    )}
+                  </button>
+                </div>
+              ) : null}
+
+              {paymentOrder?.checkoutUrl ? (
+                <a className="payment-link" href={paymentOrder.checkoutUrl}>
+                  <ExternalLink size={16} />
+                  <span>打开支付页</span>
+                </a>
+              ) : null}
+
+              {paymentNotice ? (
+                <p className="payment-notice" role="status">
+                  <CheckCircle2 size={16} />
+                  {paymentNotice}
+                </p>
+              ) : null}
+
+              {paymentError ? (
+                <p className="form-error" role="alert">
+                  <AlertCircle size={16} />
+                  {paymentError}
+                </p>
+              ) : null}
+            </div>
           </section>
         ) : (
           <div className="panel">
