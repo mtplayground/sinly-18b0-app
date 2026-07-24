@@ -3,7 +3,13 @@ import { ApiKeyCipher, ApiKeyRepository, isApiKeyPlatform } from "@sinly/db";
 import type { ApiKeyPlatform, Database } from "@sinly/db";
 import { Router } from "express";
 import type { RequestHandler, Response } from "express";
-import type { MapPoiResult, MapPoiSearchRequest, MapPoiSearchResponse } from "@sinly/shared";
+import type {
+  BatchKeywordSearchRequest,
+  BatchKeywordSearchResponse,
+  MapPoiResult,
+  MapPoiSearchRequest,
+  MapPoiSearchResponse,
+} from "@sinly/shared";
 import type { AuthServiceConfig } from "@sinly/config";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "./auth/middleware.js";
 
@@ -12,6 +18,7 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE = 10;
 const MAX_PAGE_SIZE = 20;
+const MAX_BATCH_KEYWORDS = 5;
 
 export interface MapSearchRouterDependencies {
   auth: AuthServiceConfig;
@@ -38,7 +45,7 @@ class MapProviderError extends Error {
   }
 }
 
-interface ValidatedSearchInput {
+export interface ValidatedSearchInput {
   platform: ApiKeyPlatform;
   keyword: string;
   province: string | null;
@@ -57,6 +64,20 @@ interface ProviderSearchInput extends ValidatedSearchInput {
   apiKey: string;
 }
 
+interface BatchSearchInput {
+  platform: ApiKeyPlatform;
+  keywords: string[];
+  province: string | null;
+  city: string | null;
+  district: string | null;
+  pageSize: number;
+}
+
+interface BatchSearchValidation {
+  input: BatchSearchInput | null;
+  errors: string[];
+}
+
 function createRepository(dependencies: MapSearchRouterDependencies): ApiKeyRepository | null {
   if (!dependencies.keyEncryption.secret || !dependencies.keyEncryption.salt) {
     return null;
@@ -71,8 +92,8 @@ function createRepository(dependencies: MapSearchRouterDependencies): ApiKeyRepo
   );
 }
 
-function readBody(body: unknown): Partial<MapPoiSearchRequest> {
-  return body && typeof body === "object" ? (body as Partial<MapPoiSearchRequest>) : {};
+function readBody<T extends object>(body: unknown): Partial<T> {
+  return body && typeof body === "object" ? (body as Partial<T>) : {};
 }
 
 function readOptionalText(value: unknown, maxLength: number): string | null {
@@ -102,7 +123,7 @@ function readPositiveInteger(value: unknown, fallback: number, max: number): num
 }
 
 function validateSearchInput(body: unknown): SearchInputValidation {
-  const request = readBody(body);
+  const request = readBody<MapPoiSearchRequest>(body);
   const platform =
     typeof request.platform === "string" && isApiKeyPlatform(request.platform)
       ? request.platform
@@ -130,6 +151,52 @@ function validateSearchInput(body: unknown): SearchInputValidation {
       city: readOptionalText(request.city, 40),
       district: readOptionalText(request.district, 40),
       page: readPositiveInteger(request.page, DEFAULT_PAGE, MAX_PAGE),
+      pageSize: readPositiveInteger(request.pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE),
+    },
+    errors,
+  };
+}
+
+function validateBatchSearchInput(body: unknown): BatchSearchValidation {
+  const request = readBody<BatchKeywordSearchRequest>(body);
+  const platform =
+    typeof request.platform === "string" && isApiKeyPlatform(request.platform)
+      ? request.platform
+      : null;
+  const keywords = Array.isArray(request.keywords)
+    ? [
+        ...new Set(
+          request.keywords
+            .map((keyword) => readOptionalText(keyword, 80))
+            .filter((keyword): keyword is string => Boolean(keyword)),
+        ),
+      ]
+    : [];
+  const errors: string[] = [];
+
+  if (!platform) {
+    errors.push("platform must be one of amap, baidu, or tencent");
+  }
+
+  if (keywords.length < 2) {
+    errors.push("at least two keywords are required for batch search");
+  }
+
+  if (keywords.length > MAX_BATCH_KEYWORDS) {
+    errors.push(`batch search supports up to ${MAX_BATCH_KEYWORDS} keywords`);
+  }
+
+  if (errors.length > 0 || !platform) {
+    return { input: null, errors };
+  }
+
+  return {
+    input: {
+      platform,
+      keywords,
+      province: readOptionalText(request.province, 40),
+      city: readOptionalText(request.city, 40),
+      district: readOptionalText(request.district, 40),
       pageSize: readPositiveInteger(request.pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE),
     },
     errors,
@@ -446,6 +513,64 @@ async function searchOfficialProvider(input: ProviderSearchInput): Promise<MapPo
   return searchTencent(input);
 }
 
+async function runSingleSearch(
+  apiKeys: ApiKeyRepository,
+  userSub: string,
+  input: ValidatedSearchInput,
+): Promise<MapPoiSearchResponse | null> {
+  const secret = await apiKeys.getSecretByPlatform(userSub, input.platform);
+  if (!secret) {
+    return null;
+  }
+
+  const payload = await searchOfficialProvider({
+    ...input,
+    apiKey: secret.apiKey,
+  });
+  await apiKeys.markUsed(userSub, input.platform);
+
+  return payload;
+}
+
+function resultDedupeKey(result: MapPoiResult): string {
+  return `${result.provider}:${result.providerPoiId}`;
+}
+
+function buildBatchResponse(
+  input: BatchSearchInput,
+  searches: MapPoiSearchResponse[],
+): BatchKeywordSearchResponse {
+  const seen = new Set<string>();
+  const results: MapPoiResult[] = [];
+
+  for (const search of searches) {
+    for (const result of search.results) {
+      const key = resultDedupeKey(result);
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push(result);
+      }
+    }
+  }
+
+  return {
+    batch: true,
+    platform: input.platform,
+    keyword: input.keywords.join(" / "),
+    keywords: input.keywords,
+    region: {
+      province: input.province,
+      city: input.city,
+      district: input.district,
+    },
+    page: DEFAULT_PAGE,
+    pageSize: input.pageSize,
+    total: results.length,
+    results,
+    searches,
+  };
+}
+
 export function createMapSearchHandler(dependencies: MapSearchRouterDependencies): RequestHandler {
   const apiKeys = createRepository(dependencies);
 
@@ -469,8 +594,8 @@ export function createMapSearchHandler(dependencies: MapSearchRouterDependencies
       }
 
       const authContext = getAuthenticatedUser(res);
-      const secret = await apiKeys.getSecretByPlatform(authContext.user.sub, input.platform);
-      if (!secret) {
+      const payload = await runSingleSearch(apiKeys, authContext.user.sub, input);
+      if (!payload) {
         res.status(404).json({
           error: {
             code: "MAP_API_KEY_NOT_FOUND",
@@ -480,13 +605,74 @@ export function createMapSearchHandler(dependencies: MapSearchRouterDependencies
         return;
       }
 
-      const payload = await searchOfficialProvider({
-        ...input,
-        apiKey: secret.apiKey,
-      });
-      await apiKeys.markUsed(authContext.user.sub, input.platform);
-
       res.json(payload);
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
+export function createBatchMapSearchHandler(
+  dependencies: MapSearchRouterDependencies,
+): RequestHandler {
+  const apiKeys = createRepository(dependencies);
+
+  return async (req, res, next) => {
+    try {
+      if (!apiKeys) {
+        sendEncryptionUnavailable(res);
+        return;
+      }
+
+      const authContext = getAuthenticatedUser(res);
+      if (authContext.user.membershipStatus !== "active") {
+        res.status(403).json({
+          error: {
+            code: "MEMBERSHIP_REQUIRED",
+            message: "Batch keyword search is available to active annual members",
+          },
+        });
+        return;
+      }
+
+      const validation = validateBatchSearchInput(req.body);
+      const input = validation.input;
+      if (!input) {
+        res.status(422).json({
+          error: {
+            code: "INVALID_BATCH_MAP_SEARCH_REQUEST",
+            message: validation.errors.join("; "),
+          },
+        });
+        return;
+      }
+
+      const searches: MapPoiSearchResponse[] = [];
+      for (const keyword of input.keywords) {
+        const payload = await runSingleSearch(apiKeys, authContext.user.sub, {
+          platform: input.platform,
+          keyword,
+          province: input.province,
+          city: input.city,
+          district: input.district,
+          page: DEFAULT_PAGE,
+          pageSize: input.pageSize,
+        });
+
+        if (!payload) {
+          res.status(404).json({
+            error: {
+              code: "MAP_API_KEY_NOT_FOUND",
+              message: "No API key is configured for the selected map platform",
+            },
+          });
+          return;
+        }
+
+        searches.push(payload);
+      }
+
+      res.json(buildBatchResponse(input, searches));
     } catch (error) {
       next(error);
     }

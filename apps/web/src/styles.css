@@ -622,9 +622,44 @@ h2 {
 }
 
 .keyword-form label {
+  display: grid;
+  gap: 3px;
   color: #2f3842;
   font-size: 13px;
   font-weight: 700;
+}
+
+.keyword-form label small {
+  color: #66717d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.query-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  border: 1px solid rgba(31, 36, 40, 0.12);
+  border-radius: 8px;
+  background: #f4f7f8;
+  padding: 4px;
+}
+
+.query-mode-switch button {
+  min-width: 0;
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #53606b;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.query-mode-switch .query-mode-active {
+  background: #ffffff;
+  color: #17212b;
+  box-shadow: 0 1px 6px rgba(31, 36, 40, 0.08);
 }
 
 .keyword-input-row {
@@ -633,20 +668,38 @@ h2 {
   gap: 8px;
 }
 
-.keyword-input-row input {
+.keyword-input-row input,
+.keyword-form textarea {
   width: 100%;
-  min-height: 50px;
   border: 1px solid rgba(31, 36, 40, 0.14);
   border-radius: 8px;
   background: #ffffff;
   color: #17212b;
+}
+
+.keyword-input-row input {
+  min-height: 50px;
   padding: 0 13px;
 }
 
-.keyword-input-row input:focus {
+.keyword-form textarea {
+  min-height: 118px;
+  resize: vertical;
+  padding: 12px 13px;
+  line-height: 1.45;
+}
+
+.keyword-input-row input:focus,
+.keyword-form textarea:focus {
   border-color: #157e73;
   box-shadow: 0 0 0 3px rgba(21, 126, 115, 0.14);
   outline: none;
+}
+
+.keyword-form textarea:disabled {
+  background: #eef2f3;
+  color: #7a8590;
+  cursor: not-allowed;
 }
 
 .query-submit {
@@ -664,6 +717,26 @@ h2 {
 .query-submit:disabled {
   cursor: wait;
   opacity: 0.78;
+}
+
+.batch-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 46px;
+  border: 0;
+  border-radius: 8px;
+  background: #17212b;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0 14px;
+}
+
+.batch-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .secondary-action {
