@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+**/dist-ts
+coverage
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+.progress
+.gh_token
+.database_url
