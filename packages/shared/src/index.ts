@@ -80,6 +80,50 @@ export interface ApiKeySaveRequest {
   label?: string | null;
 }
 
+export interface MapPoiSearchRequest {
+  platform: ApiKeyPlatform;
+  keyword: string;
+  province?: string;
+  city?: string;
+  district?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface MapPoiContact {
+  phone: string | null;
+}
+
+export interface MapPoiResult {
+  provider: ApiKeyPlatform;
+  providerPoiId: string;
+  name: string;
+  address: string | null;
+  province: string | null;
+  city: string | null;
+  district: string | null;
+  category: string | null;
+  contact: MapPoiContact;
+  location: {
+    latitude: number | null;
+    longitude: number | null;
+  };
+}
+
+export interface MapPoiSearchResponse {
+  platform: ApiKeyPlatform;
+  keyword: string;
+  region: {
+    province: string | null;
+    city: string | null;
+    district: string | null;
+  };
+  page: number;
+  pageSize: number;
+  total: number | null;
+  results: MapPoiResult[];
+}
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {
