@@ -3,6 +3,7 @@ import { UserRepository } from "@sinly/db";
 import type { Database, UserRecord } from "@sinly/db";
 import type { Request } from "express";
 import type { PublicUser } from "@sinly/shared";
+import { refreshUserMembership } from "../membership.js";
 import type { SessionClaims } from "./session.js";
 import { verifySession } from "./session.js";
 
@@ -87,13 +88,15 @@ export async function upsertUserFromClaims(
   }
 
   const users = new UserRepository(database);
-  return users.upsertIdentity({
+  const user = await users.upsertIdentity({
     sub: claims.sub,
     email,
     account: email,
     name: claims.name ?? null,
     pictureUrl: claims.picture ?? null,
   });
+
+  return refreshUserMembership(database, user);
 }
 
 export async function authenticateRequest(

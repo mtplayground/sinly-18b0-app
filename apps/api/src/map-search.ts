@@ -12,6 +12,7 @@ import type {
 } from "@sinly/shared";
 import type { AuthServiceConfig } from "@sinly/config";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "./auth/middleware.js";
+import { requireActiveMembership } from "./membership.js";
 
 const MAP_SEARCH_TIMEOUT_MS = 10_000;
 const DEFAULT_PAGE = 1;
@@ -739,13 +740,7 @@ export function createBatchMapSearchHandler(
       }
 
       const authContext = getAuthenticatedUser(res);
-      if (authContext.user.membershipStatus !== "active") {
-        res.status(403).json({
-          error: {
-            code: "MEMBERSHIP_REQUIRED",
-            message: "Batch keyword search is available to active annual members",
-          },
-        });
+      if (!(await requireActiveMembership(dependencies.database, authContext.user, res))) {
         return;
       }
 

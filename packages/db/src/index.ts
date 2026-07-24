@@ -11,6 +11,13 @@ export type {
 } from "./api-keys.js";
 export { Database } from "./database.js";
 export type { DatabaseHealth, QueryValue, QueryValues } from "./database.js";
+export { MembershipRepository } from "./memberships.js";
+export type {
+  CreateMembershipInput,
+  MembershipRecord,
+  MembershipRecordStatus,
+  MembershipStatusSnapshot,
+} from "./memberships.js";
 export { runMigrations } from "./migrations.js";
 export type { MigrationRecord } from "./migrations.js";
 export { PasswordResetTokenRepository } from "./password-reset-tokens.js";

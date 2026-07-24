@@ -4,6 +4,7 @@ import type { MapPoiResult, ResultExportFormat, ResultExportRequest } from "@sin
 import { Router } from "express";
 import type { RequestHandler } from "express";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "./auth/middleware.js";
+import { requireActiveMembership } from "./membership.js";
 
 const MAX_EXPORT_RESULTS = 1_000;
 const COMPLIANCE_NOTICE = "仅可在合法授权范围内使用导出数据，避免超范围留存、共享或处理个人信息。";
@@ -141,61 +142,59 @@ function timestampForFilename(): string {
   return new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
 }
 
-function createExportResultsHandler(): RequestHandler {
-  return (req, res) => {
-    const authContext = getAuthenticatedUser(res);
-    if (authContext.user.membershipStatus !== "active") {
-      res.status(403).json({
-        error: {
-          code: "MEMBERSHIP_REQUIRED",
-          message: "Result export is available to active annual members",
-        },
-      });
-      return;
+function createExportResultsHandler(database: Database): RequestHandler {
+  return async (req, res, next) => {
+    try {
+      const authContext = getAuthenticatedUser(res);
+      if (!(await requireActiveMembership(database, authContext.user, res))) {
+        return;
+      }
+
+      const body = readBody(req.body);
+      if (!isExportFormat(body.format)) {
+        res.status(422).json({
+          error: {
+            code: "INVALID_EXPORT_REQUEST",
+            message: "format must be csv or excel",
+          },
+        });
+        return;
+      }
+
+      const rows = Array.isArray(body.results)
+        ? body.results
+            .filter(isResult)
+            .slice(0, MAX_EXPORT_RESULTS)
+            .map(toRow)
+            .filter((row): row is ExportRow => Boolean(row))
+        : [];
+
+      if (rows.length === 0) {
+        res.status(422).json({
+          error: {
+            code: "INVALID_EXPORT_REQUEST",
+            message: "at least one result is required",
+          },
+        });
+        return;
+      }
+
+      const title = readText(body.title) || "整理后的查询结果";
+      const extension = body.format === "csv" ? "csv" : "xls";
+      const filename = `poi-results-${timestampForFilename()}.${extension}`;
+
+      res.setHeader("X-Export-Compliance-Notice", COMPLIANCE_NOTICE);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      if (body.format === "csv") {
+        res.type("text/csv; charset=utf-8").send(buildCsv(rows));
+        return;
+      }
+
+      res.type("application/vnd.ms-excel; charset=utf-8").send(buildExcelHtml(title, rows));
+    } catch (error) {
+      next(error);
     }
-
-    const body = readBody(req.body);
-    if (!isExportFormat(body.format)) {
-      res.status(422).json({
-        error: {
-          code: "INVALID_EXPORT_REQUEST",
-          message: "format must be csv or excel",
-        },
-      });
-      return;
-    }
-
-    const rows = Array.isArray(body.results)
-      ? body.results
-          .filter(isResult)
-          .slice(0, MAX_EXPORT_RESULTS)
-          .map(toRow)
-          .filter((row): row is ExportRow => Boolean(row))
-      : [];
-
-    if (rows.length === 0) {
-      res.status(422).json({
-        error: {
-          code: "INVALID_EXPORT_REQUEST",
-          message: "at least one result is required",
-        },
-      });
-      return;
-    }
-
-    const title = readText(body.title) || "整理后的查询结果";
-    const extension = body.format === "csv" ? "csv" : "xls";
-    const filename = `poi-results-${timestampForFilename()}.${extension}`;
-
-    res.setHeader("X-Export-Compliance-Notice", COMPLIANCE_NOTICE);
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-
-    if (body.format === "csv") {
-      res.type("text/csv; charset=utf-8").send(buildCsv(rows));
-      return;
-    }
-
-    res.type("application/vnd.ms-excel; charset=utf-8").send(buildExcelHtml(title, rows));
   };
 }
 
@@ -208,7 +207,7 @@ export function createExportRouter(dependencies: ExportRouterDependencies): Rout
   });
 
   router.use(requireUser);
-  router.post("/results", createExportResultsHandler());
+  router.post("/results", createExportResultsHandler(dependencies.database));
 
   return router;
 }
