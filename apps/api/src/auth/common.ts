@@ -70,6 +70,22 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function emailFromClaims(claims: SessionClaims): string | null {
+  const email = claims.email?.trim().toLowerCase();
+  if (!email) {
+    return null;
+  }
+
+  if (!isValidEmail(email)) {
+    const error = new Error("Email format is invalid") as Error & { code: string; status: number };
+    error.code = "INVALID_EMAIL";
+    error.status = 422;
+    throw error;
+  }
+
+  return email;
+}
+
 export function toPublicUser(
   user: UserRecord,
   membershipExpiresAt: Date | null = null,
@@ -95,20 +111,13 @@ export async function upsertUserFromClaims(
   database: Database,
   claims: SessionClaims,
 ): Promise<UserRecord> {
-  const email = claims.email.toLowerCase();
-
-  if (!isValidEmail(email)) {
-    const error = new Error("Email format is invalid") as Error & { code: string; status: number };
-    error.code = "INVALID_EMAIL";
-    error.status = 422;
-    throw error;
-  }
+  const email = emailFromClaims(claims);
 
   const users = new UserRepository(database);
   const user = await users.upsertIdentity({
     sub: claims.sub,
     email,
-    account: email,
+    account: email ?? claims.sub,
     name: claims.name ?? null,
     pictureUrl: claims.picture ?? null,
   });

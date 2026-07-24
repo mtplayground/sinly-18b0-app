@@ -161,7 +161,7 @@ function routeDescription(route: MobileRouteDefinition): string {
 }
 
 function userDisplayName(user: PublicUser): string {
-  return user.name?.trim() || user.account || user.email;
+  return user.name?.trim() || user.account || user.email || "微信授权用户";
 }
 
 function formatPrice(cents: number, currency = "CNY"): string {
@@ -249,6 +249,10 @@ function splitHistoryKeywords(item: SearchHistoryItem): string[] {
     .split("/")
     .map((keyword) => keyword.trim())
     .filter(Boolean);
+}
+
+function userEmailLabel(user: PublicUser): string {
+  return user.email ?? "未绑定邮箱";
 }
 
 function findRegionCodesByNames(item: SearchHistoryItem): {
@@ -1116,7 +1120,7 @@ export function App() {
             )}
             <div>
               <strong>{userDisplayName(user)}</strong>
-              <span>{user.email}</span>
+              <span>{userEmailLabel(user)}</span>
             </div>
           </div>
         ) : null}
@@ -1898,7 +1902,7 @@ export function App() {
                   </div>
                   <div className="profile-card-main">
                     <strong>{userDisplayName(user)}</strong>
-                    <span>{user.email}</span>
+                    <span>{userEmailLabel(user)}</span>
                     <small>账号 {user.account}</small>
                   </div>
                 </div>

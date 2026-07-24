@@ -88,7 +88,7 @@ export function createPasswordResetRouter(dependencies: PasswordResetRouterDepen
       }
 
       const user = await users.findByEmail(email);
-      if (!user) {
+      if (!user?.email) {
         res.json(genericRequestResponse(false));
         return;
       }

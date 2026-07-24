@@ -13,7 +13,7 @@ export interface HealthResponse {
 
 export interface PublicUser {
   sub: string;
-  email: string;
+  email: string | null;
   account: string;
   name: string | null;
   pictureUrl: string | null;
