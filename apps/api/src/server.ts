@@ -11,7 +11,7 @@ try {
     console.log(`Database migrations applied: ${migrations.length}`);
   }
 
-  const app = createApp(config.server, { database });
+  const app = createApp(config.server, { auth: config.auth, database });
   const server = app.listen(config.server.port, config.server.host, () => {
     console.log(`API server listening on http://${config.server.host}:${config.server.port}`);
   });
