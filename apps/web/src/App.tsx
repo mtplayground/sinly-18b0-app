@@ -134,7 +134,8 @@ export function App() {
 
         {health ? (
           <p className="health-line">
-            服务版本 {health.version}, 已运行 {health.uptimeSeconds}s
+            服务版本 {health.version}, 已运行 {health.uptimeSeconds}s, 数据库{" "}
+            {health.database.latencyMs}ms
           </p>
         ) : null}
       </section>

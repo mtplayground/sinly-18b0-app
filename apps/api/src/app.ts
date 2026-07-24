@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApiRouter } from "./routes.js";
 import type { RuntimeConfig } from "./config.js";
+import type { Database } from "@sinly/db";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +16,11 @@ function resolveWebDist(): string {
   return process.env.WEB_DIST_DIR ?? path.resolve(__dirname, "../../web/dist");
 }
 
-export function createApp(config: RuntimeConfig): express.Express {
+export interface AppDependencies {
+  database: Database;
+}
+
+export function createApp(config: RuntimeConfig, dependencies: AppDependencies): express.Express {
   const app = express();
   const startedAt = Date.now();
   const version = process.env.npm_package_version ?? "0.1.0";
@@ -41,7 +46,7 @@ export function createApp(config: RuntimeConfig): express.Express {
     }),
   );
 
-  app.use("/api", createApiRouter(startedAt, version));
+  app.use("/api", createApiRouter(startedAt, version, { database: dependencies.database }));
 
   const webDist = resolveWebDist();
   if (existsSync(webDist)) {
