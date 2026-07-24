@@ -21,6 +21,7 @@ import type {
   ApiKeyPlatform,
   ApiKeySummary,
   HealthResponse,
+  KeywordSearchResponse,
   MobileRouteDefinition,
   MobileRouteKey,
   PublicUser,
@@ -37,6 +38,7 @@ import {
   loadMobileShell,
   requestLogin,
   requestRegister,
+  searchByKeyword,
   updateApiKey,
   type MobileShellResponse,
 } from "./api";
@@ -46,6 +48,7 @@ type AuthMode = "login" | "register";
 type AuthStatus = "checking" | "guest" | "authenticated";
 type SubmitState = "idle" | "submitting";
 type KeySyncState = "idle" | "loading" | "ready" | "error";
+type QueryState = "idle" | "searching" | "done" | "error";
 
 interface ApiKeyFormState {
   apiKey: string;
@@ -152,6 +155,10 @@ export function App() {
   const [selectedProvinceCode, setSelectedProvinceCode] = useState(defaultProvince.code);
   const [selectedCityCode, setSelectedCityCode] = useState(defaultCity.code);
   const [selectedCountyCode, setSelectedCountyCode] = useState(defaultCounty.code);
+  const [keyword, setKeyword] = useState("");
+  const [queryState, setQueryState] = useState<QueryState>("idle");
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [latestSearch, setLatestSearch] = useState<KeywordSearchResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -319,6 +326,65 @@ export function App() {
       setKeyError("Key 删除失败，请稍后重试。");
     } finally {
       setKeySavingPlatform(null);
+    }
+  }
+
+  async function handleKeywordSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const normalizedKeyword = keyword.trim();
+    if (!normalizedKeyword) {
+      setQueryState("error");
+      setQueryError("请输入关键词。");
+      return;
+    }
+
+    if (!selectedKey) {
+      setQueryState("error");
+      setQueryError(
+        `当前平台未配置 Key，请先在 Key 页保存${platformLabels[selectedPlatform]} Key。`,
+      );
+      return;
+    }
+
+    setQueryState("searching");
+    setQueryError(null);
+
+    try {
+      const payload = await searchByKeyword({
+        platform: selectedPlatform,
+        keyword: normalizedKeyword,
+        province: selectedRegion.province.name,
+        city: selectedRegion.city.name,
+        district: selectedRegion.county.name,
+        page: 1,
+        pageSize: 10,
+      });
+
+      setLatestSearch(payload);
+      setQueryState("done");
+      setActiveRouteKey("results");
+    } catch (error) {
+      setQueryState("error");
+
+      if (error instanceof ApiRequestError && error.loginUrl) {
+        setQueryError("请先登录后再查询。");
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "MAP_API_KEY_NOT_FOUND") {
+        setQueryError(
+          `当前平台未配置 Key，请先在 Key 页保存${platformLabels[selectedPlatform]} Key。`,
+        );
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "INVALID_MAP_SEARCH_REQUEST") {
+        setQueryError("查询条件不完整，请检查平台和关键词。");
+        return;
+      }
+
+      setQueryError("查询失败，请稍后重试。");
     }
   }
 
@@ -526,11 +592,11 @@ export function App() {
         </section>
 
         {activeRoute.key === "query" ? (
-          <section className="region-panel" aria-labelledby="region-selector-title">
+          <section className="query-panel" aria-labelledby="query-title">
             <div className="panel-title">
               <ActiveIcon size={22} />
               <div>
-                <h2 id="region-selector-title">地区选择</h2>
+                <h2 id="query-title">关键词查询</h2>
                 <p>{activeRoute.apiNamespace}</p>
               </div>
             </div>
@@ -588,6 +654,59 @@ export function App() {
               <span>{regionPath}</span>
               <small>行政区划代码 {selectedRegion.county.code}</small>
             </div>
+
+            <form className="keyword-form" onSubmit={handleKeywordSearch} noValidate>
+              <label htmlFor="keyword-input">关键词</label>
+              <div className="keyword-input-row">
+                <input
+                  id="keyword-input"
+                  type="search"
+                  maxLength={80}
+                  enterKeyHint="search"
+                  placeholder="餐饮、酒店、汽修、公司名"
+                  value={keyword}
+                  aria-invalid={Boolean(queryError)}
+                  onChange={(event) => {
+                    setKeyword(event.target.value);
+                    if (queryError) {
+                      setQueryError(null);
+                      setQueryState("idle");
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  className="query-submit"
+                  disabled={queryState === "searching"}
+                  title="查询"
+                  aria-label="查询"
+                >
+                  {queryState === "searching" ? (
+                    <Loader2 className="spin" size={20} />
+                  ) : (
+                    <Search size={20} />
+                  )}
+                </button>
+              </div>
+
+              {queryError ? (
+                <p className="form-error" role="alert">
+                  <AlertCircle size={16} />
+                  {queryError}
+                </p>
+              ) : null}
+
+              {!selectedKey ? (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() => setActiveRouteKey("keys")}
+                >
+                  <KeyRound size={17} />
+                  <span>配置{platformLabels[selectedPlatform]} Key</span>
+                </button>
+              ) : null}
+            </form>
           </section>
         ) : activeRoute.key === "keys" ? (
           <section className="key-settings" aria-labelledby="key-settings-title">
@@ -703,6 +822,19 @@ export function App() {
               </div>
             </div>
             <p className="panel-copy">{routeDescription(activeRoute)}</p>
+            {activeRoute.key === "results" && latestSearch ? (
+              <div className="search-arrival" aria-label="最近一次查询">
+                <strong>{latestSearch.keyword}</strong>
+                <span>
+                  {platformLabels[latestSearch.platform]} · {latestSearch.region.province ?? "-"} /{" "}
+                  {latestSearch.region.city ?? "-"} / {latestSearch.region.district ?? "-"}
+                </span>
+                <small>
+                  已返回 {latestSearch.results.length} 条
+                  {latestSearch.total !== null ? ` / 官方总数 ${latestSearch.total}` : ""}
+                </small>
+              </div>
+            ) : null}
             <div className="route-meta">
               <span>当前平台 {platformLabels[selectedPlatform]}</span>
               <span>当前地区 {regionPath}</span>
