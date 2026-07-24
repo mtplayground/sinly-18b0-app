@@ -1,39 +1,42 @@
-# Architecture Plan for Issues #57-#58
+# Architecture plan for Issues #61-#64
 
-## Current Project Shape
-- Node/TypeScript monorepo with `apps/api` Express API, `apps/web` Vite/React H5 client, `packages/shared` DTOs, `packages/config` env parsing, and `packages/db` PostgreSQL repositories/migrations.
-- Authentication is centralized through the platform auth service. The backend verifies the `mctai_session` cookie and builds platform login URLs in `apps/api/src/auth/common.ts`.
-- The logged-out H5 auth screen currently lives in `apps/web/src/App.tsx`; API helpers are in `apps/web/src/api.ts`; shared auth response DTOs are in `packages/shared/src/index.ts`.
+## Current module structure
 
-## Issue #57: 修复登录回跳域名不一致导致登录不成功的 bug
-- Primary files:
-  - `apps/api/src/auth/common.ts`: make `publicOrigin()` derive the browser-visible origin from `X-Forwarded-Host` / `X-Forwarded-Proto` first, not from raw `Host`, and avoid over-trusting stale `SELF_URL` when the request clearly came through another public host/custom domain.
-  - `apps/api/src/auth/login.ts`, `apps/api/src/auth/middleware.ts`, `apps/api/src/auth/register.ts`, `apps/api/src/auth/session-route.ts`: keep using the shared `buildLoginUrl()` helper so every login redirect uses the same corrected `return_to` origin.
-  - `apps/api/src/app.ts`: keep `app.set("trust proxy", 1)` and proxy-aware CORS behavior aligned with the corrected public-origin helper.
-- Verification targets:
-  - `GET /api/auth/login` redirects to `MCTAI_AUTH_URL/login?...&return_to=<current public origin>/` when `X-Forwarded-Host` is set.
-  - Same behavior works for configured default domain and any custom domain forwarded by the proxy.
-  - `return_to` must remain a user-visible frontend route (`/`), never an API endpoint.
+- `apps/api`: Express + TypeScript backend. Authentication routing lives in `apps/api/src/auth/*`:
+  - `common.ts` builds platform login URLs, maps DB users to public API users, and upserts authenticated identities.
+  - `session.ts` verifies `mctai_session` JWTs using `MCTAI_AUTH_JWKS_URL` and defines session claim shape.
+  - `login.ts`, `register.ts`, and `session-route.ts` expose auth endpoints under `/api/auth`.
+- `apps/web`: Vite + React frontend. The unauthenticated login screen and logged-in H5 app shell are currently in `apps/web/src/App.tsx`; API calls are in `apps/web/src/api.ts`.
+- `packages/db`: PostgreSQL migrations and repositories. User persistence is in `packages/db/src/users.ts`; migrations are append-only under `packages/db/migrations`.
+- `packages/shared`: Shared request/response DTOs used by API and web. `PublicUser` currently includes non-null `email` and must remain the frontend/API contract source.
+- `tests/e2e`: `critical-flow.test.ts` validates key app flows and login UI copy.
 
-## Issue #58: 登录页去掉误导邮箱框,改为「使用平台账号登录」按钮
-- Primary files:
-  - `apps/web/src/App.tsx`: replace the guest login/register segmented form and email input with one clear CTA button labeled `使用平台账号登录`. The button should call `requestLogin()` and redirect to `payload.loginUrl`; on API errors, use existing friendly error handling.
-  - `apps/web/src/api.ts`: simplify/remove email-based `requestRegister(email)` frontend usage if no longer needed by the login page; keep lower-level API functions only if another flow still imports them.
-  - `packages/shared/src/index.ts`: preserve `LoginResponse` and `SessionResponse`; update/remove register DTO usage only if the frontend no longer references it.
-  - `apps/web/src/styles.css`: remove or repurpose auth form styles minimally; keep mobile-first layout and watermark positioning intact.
-- Verification targets:
-  - Logged-out page shows no email textbox and no local-register copy.
-  - CTA text is exactly `使用平台账号登录`.
-  - Clicking the CTA starts the platform auth flow and does not reveal any default/local credentials path.
+## Issue dependency order
 
-## Dependencies and Ordering
-1. Implement #57 first because all auth entry points depend on correct `return_to`; #58's button should call the already-correct login URL path.
-2. Implement #58 second as a frontend simplification over the stable backend login contract.
-3. Both issues should preserve existing session verification, user upsert, membership status loading, and PostgreSQL persistence.
+1. **#61 登录 URL 增加微信一键授权意图参数**
+   - Update `buildLoginUrl()` in `apps/api/src/auth/common.ts` so generated `${MCTAI_AUTH_URL}/login` URLs include the platform-supported WeChat one-tap intent parameters while retaining `app_token` and `return_to`.
+   - Keep existing proxy-aware return URL behavior and JWT/JWKS session validation unchanged.
 
-## Key Design Decisions
-- Keep one backend login URL builder (`buildLoginUrl`) as the single source of truth for platform auth redirects.
-- Prefer forwarded headers for public-origin derivation because Ideavibes rewrites raw `Host` behind the reverse proxy.
-- Do not add app-issued JWTs, local passwords, or direct Google/OAuth provider integrations.
-- Keep unauthenticated API responses JSON-friendly for the SPA, but all browser login starts should ultimately navigate to the platform auth service.
-- Add focused tests around public-origin derivation and logged-out auth UI rather than broad refactors.
+2. **#62 前端登录页文案与按钮改为「微信一键授权登录」**
+   - Depends on #61 so the unchanged `requestLogin()` click path now routes to WeChat-intent login.
+   - Update guest/login screen copy in `apps/web/src/App.tsx` only; use a generic icon or small local SVG if a WeChat-like icon is desired.
+
+3. **#63 兼容微信授权无邮箱的用户建号**
+   - Depends on #61 because WeChat authorization may produce sessions without email.
+   - Add a new DB migration to make `users.email` nullable and adapt unique handling for nullable email.
+   - Update `SessionClaims.email` to optional, `PublicUser.email` to `string | null`, and user repository/create/upsert types accordingly.
+   - Change `upsertUserFromClaims()` so email is normalized only when present; account falls back to a stable subject-derived identifier when email is missing.
+   - Ensure public user mapping and frontend display helpers tolerate `null` email.
+
+4. **#64 更新登录入口的 e2e 文案断言**
+   - Depends on #62.
+   - Update `tests/e2e/critical-flow.test.ts` assertions to expect the new WeChat one-tap login wording.
+
+## Key design decisions
+
+- Do not implement WeChat OAuth inside this app. All OAuth provider selection remains an intent passed to the existing MCTAI auth service.
+- Preserve the platform session model: browser receives `mctai_session`; API validates it with JWKS; user records are created/updated from claims.
+- Make database changes append-only through a new numbered migration rather than editing applied migrations.
+- Treat `sub` as the mandatory stable identity. Email becomes optional display/contact data; `account` remains required and unique, using email when present and a deterministic `sub`/provider-derived fallback otherwise.
+- Keep shared DTOs updated before API/web code changes so TypeScript catches contract drift.
+- E2E text updates are last because they depend on the final frontend copy.

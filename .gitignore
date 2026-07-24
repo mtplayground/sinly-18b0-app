@@ -5,6 +5,7 @@ dist-ts/
 .env
 .env.local
 .env.*.local
+.env.production
 .gh_token
 .database_url
 .task_id
@@ -15,4 +16,3 @@ dist-ts/
 .pipeline-state.json
 .gitkeep
 .progress
-.env.production
