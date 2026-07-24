@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApiRouter } from "./routes.js";
 import type { AuthServiceConfig } from "@sinly/config";
+import type { EmailServiceConfig } from "@sinly/config";
 import type { ServerConfig } from "@sinly/config";
 import type { Database } from "@sinly/db";
 
@@ -21,6 +22,7 @@ function resolveWebDist(): string {
 export interface AppDependencies {
   auth: AuthServiceConfig;
   database: Database;
+  email: EmailServiceConfig;
 }
 
 export function createApp(config: ServerConfig, dependencies: AppDependencies): express.Express {
@@ -55,6 +57,7 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
     createApiRouter(startedAt, version, {
       auth: dependencies.auth,
       database: dependencies.database,
+      email: dependencies.email,
       server: config,
     }),
   );
