@@ -12,6 +12,8 @@ import type {
   LoginResponse,
   MobileRouteDefinition,
   RegisterResponse,
+  ResultExportFormat,
+  ResultExportRequest,
   SessionResponse,
 } from "@sinly/shared";
 
@@ -42,6 +44,11 @@ export class ApiRequestError extends Error {
     this.code = payload?.error?.code ?? "REQUEST_FAILED";
     this.loginUrl = payload?.loginUrl;
   }
+}
+
+export interface ResultExportDownload {
+  blob: Blob;
+  filename: string;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -140,4 +147,42 @@ export function searchByKeywords(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+function filenameFromDisposition(disposition: string | null, format: ResultExportFormat): string {
+  const fallback = `poi-results.${format === "csv" ? "csv" : "xls"}`;
+  if (!disposition) {
+    return fallback;
+  }
+
+  const match = /filename="([^"]+)"/i.exec(disposition);
+  return match?.[1] ?? fallback;
+}
+
+export async function exportResults(input: ResultExportRequest): Promise<ResultExportDownload> {
+  const response = await fetch("/api/exports/results", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "text/csv, application/vnd.ms-excel",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    let payload: ApiErrorPayload | null = null;
+    try {
+      payload = await readJson<ApiErrorPayload>(response);
+    } catch {
+      payload = null;
+    }
+
+    throw new ApiRequestError(response.status, payload);
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get("Content-Disposition"), input.format),
+  };
 }

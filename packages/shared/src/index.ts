@@ -142,6 +142,14 @@ export interface BatchKeywordSearchResponse extends MapPoiSearchResponse {
   searches: MapPoiSearchResponse[];
 }
 
+export type ResultExportFormat = "csv" | "excel";
+
+export interface ResultExportRequest {
+  format: ResultExportFormat;
+  title?: string;
+  results: MapPoiResult[];
+}
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {

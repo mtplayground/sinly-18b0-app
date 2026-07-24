@@ -13,6 +13,7 @@ import { createLoginRouter } from "./auth/login.js";
 import { createPasswordResetRouter } from "./auth/password-reset.js";
 import { createRegisterRouter } from "./auth/register.js";
 import { createSessionRouter } from "./auth/session-route.js";
+import { createExportRouter } from "./exports.js";
 import { createMapSearchRouter } from "./map-search.js";
 import { createSearchRouter } from "./searches.js";
 
@@ -88,6 +89,14 @@ export function createApiRouter(
       auth: dependencies.auth,
       database: dependencies.database,
       keyEncryption: dependencies.keyEncryption,
+      server: dependencies.server,
+    }),
+  );
+  router.use(
+    "/exports",
+    createExportRouter({
+      auth: dependencies.auth,
+      database: dependencies.database,
       server: dependencies.server,
     }),
   );
