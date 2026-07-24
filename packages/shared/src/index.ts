@@ -150,6 +150,43 @@ export interface ResultExportRequest {
   results: MapPoiResult[];
 }
 
+export type PaymentProvider = "alipay" | "wechat";
+export type PaymentOrderStatus = "pending" | "paid" | "failed" | "cancelled";
+
+export interface PaymentOrderRequest {
+  provider?: PaymentProvider;
+}
+
+export interface PaymentOrderSummary {
+  id: string;
+  provider: PaymentProvider;
+  providerOrderId: string;
+  status: PaymentOrderStatus;
+  amountCents: number;
+  currency: string;
+  membershipMonths: number;
+  subject: string;
+  checkoutUrl: string | null;
+  orderExpiresAt: string;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+export interface PaymentOrderResponse {
+  order: PaymentOrderSummary;
+  paymentUrl: string | null;
+  configured: boolean;
+  message: string;
+}
+
+export interface PaymentCallbackResponse {
+  accepted: true;
+  orderId: string;
+  status: PaymentOrderStatus;
+  alreadyPaid: boolean;
+  membershipExpiresAt: string | null;
+}
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {

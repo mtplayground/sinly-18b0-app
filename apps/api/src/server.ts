@@ -16,6 +16,7 @@ try {
     database,
     email: config.email,
     keyEncryption: config.keyEncryption,
+    payment: config.payment,
   });
   const server = app.listen(config.server.port, config.server.host, () => {
     console.log(`API server listening on http://${config.server.host}:${config.server.port}`);

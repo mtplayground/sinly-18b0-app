@@ -3,6 +3,7 @@ import type {
   AuthServiceConfig,
   EmailServiceConfig,
   KeyEncryptionConfig,
+  PaymentConfig,
   ServerConfig,
 } from "@sinly/config";
 import type { Database } from "@sinly/db";
@@ -15,6 +16,7 @@ import { createRegisterRouter } from "./auth/register.js";
 import { createSessionRouter } from "./auth/session-route.js";
 import { createExportRouter } from "./exports.js";
 import { createMapSearchRouter } from "./map-search.js";
+import { createPaymentRouter } from "./payments.js";
 import { createSearchRouter } from "./searches.js";
 
 export interface ApiRouterDependencies {
@@ -22,6 +24,7 @@ export interface ApiRouterDependencies {
   database: Database;
   email: EmailServiceConfig;
   keyEncryption: KeyEncryptionConfig;
+  payment: PaymentConfig;
   server: ServerConfig;
 }
 
@@ -97,6 +100,15 @@ export function createApiRouter(
     createExportRouter({
       auth: dependencies.auth,
       database: dependencies.database,
+      server: dependencies.server,
+    }),
+  );
+  router.use(
+    "/payments",
+    createPaymentRouter({
+      auth: dependencies.auth,
+      database: dependencies.database,
+      payment: dependencies.payment,
       server: dependencies.server,
     }),
   );
