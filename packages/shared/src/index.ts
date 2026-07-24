@@ -36,6 +36,17 @@ export interface SessionResponse {
   user: PublicUser;
 }
 
+export interface PasswordResetRequestResponse {
+  accepted: true;
+  emailSent: boolean;
+  expiresInMinutes: number;
+}
+
+export interface PasswordResetConfirmResponse {
+  confirmed: true;
+  loginUrl: string;
+}
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {

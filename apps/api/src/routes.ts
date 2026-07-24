@@ -1,15 +1,17 @@
 import { Router } from "express";
-import type { AuthServiceConfig, ServerConfig } from "@sinly/config";
+import type { AuthServiceConfig, EmailServiceConfig, ServerConfig } from "@sinly/config";
 import type { Database } from "@sinly/db";
 import type { HealthResponse } from "@sinly/shared";
 import { mobileRoutes } from "@sinly/shared";
 import { createLoginRouter } from "./auth/login.js";
+import { createPasswordResetRouter } from "./auth/password-reset.js";
 import { createRegisterRouter } from "./auth/register.js";
 import { createSessionRouter } from "./auth/session-route.js";
 
 export interface ApiRouterDependencies {
   auth: AuthServiceConfig;
   database: Database;
+  email: EmailServiceConfig;
   server: ServerConfig;
 }
 
@@ -25,6 +27,15 @@ export function createApiRouter(
     createLoginRouter({
       auth: dependencies.auth,
       database: dependencies.database,
+      server: dependencies.server,
+    }),
+  );
+  router.use(
+    "/auth",
+    createPasswordResetRouter({
+      auth: dependencies.auth,
+      database: dependencies.database,
+      email: dependencies.email,
       server: dependencies.server,
     }),
   );
