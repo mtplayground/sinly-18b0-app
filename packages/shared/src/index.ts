@@ -127,6 +127,21 @@ export interface MapPoiSearchResponse {
 export type KeywordSearchRequest = MapPoiSearchRequest;
 export type KeywordSearchResponse = MapPoiSearchResponse;
 
+export interface BatchKeywordSearchRequest {
+  platform: ApiKeyPlatform;
+  keywords: string[];
+  province?: string;
+  city?: string;
+  district?: string;
+  pageSize?: number;
+}
+
+export interface BatchKeywordSearchResponse extends MapPoiSearchResponse {
+  batch: true;
+  keywords: string[];
+  searches: MapPoiSearchResponse[];
+}
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {

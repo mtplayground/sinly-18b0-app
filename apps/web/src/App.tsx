@@ -23,6 +23,7 @@ import {
 import type {
   ApiKeyPlatform,
   ApiKeySummary,
+  BatchKeywordSearchResponse,
   HealthResponse,
   KeywordSearchResponse,
   MapPoiResult,
@@ -43,6 +44,7 @@ import {
   requestLogin,
   requestRegister,
   searchByKeyword,
+  searchByKeywords,
   updateApiKey,
   type MobileShellResponse,
 } from "./api";
@@ -53,6 +55,7 @@ type AuthStatus = "checking" | "guest" | "authenticated";
 type SubmitState = "idle" | "submitting";
 type KeySyncState = "idle" | "loading" | "ready" | "error";
 type QueryState = "idle" | "searching" | "done" | "error";
+type QueryMode = "single" | "batch";
 
 interface ApiKeyFormState {
   apiKey: string;
@@ -93,6 +96,7 @@ const platformLabels: Record<ApiKeyPlatform, string> = {
 };
 
 const FREE_RESULT_LIMIT = 10;
+const MAX_BATCH_KEYWORDS = 5;
 
 const iconByRoute: Record<MobileRouteKey, LucideIcon> = {
   query: Search,
@@ -154,6 +158,23 @@ function resultRegion(result: MapPoiResult): string {
   );
 }
 
+function parseBatchKeywords(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(/[\n,，;；]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function isBatchSearch(
+  search: KeywordSearchResponse | BatchKeywordSearchResponse,
+): search is BatchKeywordSearchResponse {
+  return "batch" in search && search.batch;
+}
+
 export function App() {
   const [activeRouteKey, setActiveRouteKey] = useState<MobileRouteKey>("query");
   const [apiState, setApiState] = useState<ApiState>("checking");
@@ -175,10 +196,14 @@ export function App() {
   const [selectedProvinceCode, setSelectedProvinceCode] = useState(defaultProvince.code);
   const [selectedCityCode, setSelectedCityCode] = useState(defaultCity.code);
   const [selectedCountyCode, setSelectedCountyCode] = useState(defaultCounty.code);
+  const [queryMode, setQueryMode] = useState<QueryMode>("single");
   const [keyword, setKeyword] = useState("");
+  const [batchKeywords, setBatchKeywords] = useState("");
   const [queryState, setQueryState] = useState<QueryState>("idle");
   const [queryError, setQueryError] = useState<string | null>(null);
-  const [latestSearch, setLatestSearch] = useState<KeywordSearchResponse | null>(null);
+  const [latestSearch, setLatestSearch] = useState<
+    KeywordSearchResponse | BatchKeywordSearchResponse | null
+  >(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -419,6 +444,81 @@ export function App() {
       }
 
       setQueryError("查询失败，请稍后重试。");
+    }
+  }
+
+  async function handleBatchKeywordSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!isAnnualMember) {
+      setQueryState("error");
+      setQueryError("批量关键词查询仅年会员可用。");
+      return;
+    }
+
+    const keywords = parseBatchKeywords(batchKeywords);
+    if (keywords.length < 2) {
+      setQueryState("error");
+      setQueryError("请至少输入 2 个关键词。");
+      return;
+    }
+
+    if (keywords.length > MAX_BATCH_KEYWORDS) {
+      setQueryState("error");
+      setQueryError(`每次最多提交 ${MAX_BATCH_KEYWORDS} 个关键词。`);
+      return;
+    }
+
+    if (!selectedKey) {
+      setQueryState("error");
+      setQueryError(
+        `当前平台未配置 Key，请先在 Key 页保存${platformLabels[selectedPlatform]} Key。`,
+      );
+      return;
+    }
+
+    setQueryState("searching");
+    setQueryError(null);
+
+    try {
+      const payload = await searchByKeywords({
+        platform: selectedPlatform,
+        keywords,
+        province: selectedRegion.province.name,
+        city: selectedRegion.city.name,
+        district: selectedRegion.county.name,
+        pageSize: 20,
+      });
+
+      setLatestSearch(payload);
+      setQueryState("done");
+      setActiveRouteKey("results");
+    } catch (error) {
+      setQueryState("error");
+
+      if (error instanceof ApiRequestError && error.loginUrl) {
+        setQueryError("请先登录后再查询。");
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "MEMBERSHIP_REQUIRED") {
+        setQueryError("批量关键词查询仅年会员可用。");
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "MAP_API_KEY_NOT_FOUND") {
+        setQueryError(
+          `当前平台未配置 Key，请先在 Key 页保存${platformLabels[selectedPlatform]} Key。`,
+        );
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "INVALID_BATCH_MAP_SEARCH_REQUEST") {
+        setQueryError("批量查询条件不完整，请检查平台、关键词数量和地区。");
+        return;
+      }
+
+      setQueryError("批量查询失败，请稍后重试。");
     }
   }
 
@@ -689,19 +789,84 @@ export function App() {
               <small>行政区划代码 {selectedRegion.county.code}</small>
             </div>
 
-            <form className="keyword-form" onSubmit={handleKeywordSearch} noValidate>
-              <label htmlFor="keyword-input">关键词</label>
-              <div className="keyword-input-row">
-                <input
-                  id="keyword-input"
-                  type="search"
-                  maxLength={80}
-                  enterKeyHint="search"
-                  placeholder="餐饮、酒店、汽修、公司名"
-                  value={keyword}
+            <div className="query-mode-switch" role="tablist" aria-label="查询模式">
+              <button
+                type="button"
+                className={queryMode === "single" ? "query-mode-active" : ""}
+                aria-selected={queryMode === "single"}
+                onClick={() => {
+                  setQueryMode("single");
+                  setQueryError(null);
+                  setQueryState("idle");
+                }}
+              >
+                单个关键词
+              </button>
+              <button
+                type="button"
+                className={queryMode === "batch" ? "query-mode-active" : ""}
+                aria-selected={queryMode === "batch"}
+                onClick={() => {
+                  setQueryMode("batch");
+                  setQueryError(null);
+                  setQueryState("idle");
+                }}
+              >
+                批量关键词
+              </button>
+            </div>
+
+            {queryMode === "single" ? (
+              <form className="keyword-form" onSubmit={handleKeywordSearch} noValidate>
+                <label htmlFor="keyword-input">关键词</label>
+                <div className="keyword-input-row">
+                  <input
+                    id="keyword-input"
+                    type="search"
+                    maxLength={80}
+                    enterKeyHint="search"
+                    placeholder="餐饮、酒店、汽修、公司名"
+                    value={keyword}
+                    aria-invalid={Boolean(queryError)}
+                    onChange={(event) => {
+                      setKeyword(event.target.value);
+                      if (queryError) {
+                        setQueryError(null);
+                        setQueryState("idle");
+                      }
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    className="query-submit"
+                    disabled={queryState === "searching"}
+                    title="查询"
+                    aria-label="查询"
+                  >
+                    {queryState === "searching" ? (
+                      <Loader2 className="spin" size={20} />
+                    ) : (
+                      <Search size={20} />
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form className="keyword-form" onSubmit={handleBatchKeywordSearch} noValidate>
+                <label htmlFor="batch-keyword-input">
+                  批量关键词
+                  <small>最多 {MAX_BATCH_KEYWORDS} 个，逐行或逗号分隔</small>
+                </label>
+                <textarea
+                  id="batch-keyword-input"
+                  rows={5}
+                  maxLength={500}
+                  placeholder="餐饮&#10;酒店&#10;汽修"
+                  value={batchKeywords}
                   aria-invalid={Boolean(queryError)}
+                  disabled={!isAnnualMember}
                   onChange={(event) => {
-                    setKeyword(event.target.value);
+                    setBatchKeywords(event.target.value);
                     if (queryError) {
                       setQueryError(null);
                       setQueryState("idle");
@@ -710,37 +875,56 @@ export function App() {
                 />
                 <button
                   type="submit"
-                  className="query-submit"
-                  disabled={queryState === "searching"}
-                  title="查询"
-                  aria-label="查询"
+                  className="batch-submit"
+                  disabled={queryState === "searching" || !isAnnualMember}
                 >
                   {queryState === "searching" ? (
-                    <Loader2 className="spin" size={20} />
+                    <Loader2 className="spin" size={18} />
                   ) : (
-                    <Search size={20} />
+                    <Search size={18} />
                   )}
+                  <span>批量查询</span>
                 </button>
-              </div>
+              </form>
+            )}
 
-              {queryError ? (
-                <p className="form-error" role="alert">
-                  <AlertCircle size={16} />
-                  {queryError}
-                </p>
-              ) : null}
+            {queryError ? (
+              <p className="form-error" role="alert">
+                <AlertCircle size={16} />
+                {queryError}
+              </p>
+            ) : null}
 
-              {!selectedKey ? (
+            {queryMode === "batch" && !isAnnualMember ? (
+              <div className="locked-results" role="note">
+                <div>
+                  <LockKeyhole size={20} />
+                </div>
+                <div>
+                  <strong>批量关键词查询为年会员权益</strong>
+                  <span>开通后可一次提交多个关键词，并合并官方 API 返回结果。</span>
+                </div>
                 <button
                   type="button"
-                  className="secondary-action"
-                  onClick={() => setActiveRouteKey("keys")}
+                  className="upgrade-action"
+                  onClick={() => setActiveRouteKey("membership")}
                 >
-                  <KeyRound size={17} />
-                  <span>配置{platformLabels[selectedPlatform]} Key</span>
+                  <Crown size={17} />
+                  <span>升级年会员</span>
                 </button>
-              ) : null}
-            </form>
+              </div>
+            ) : null}
+
+            {!selectedKey ? (
+              <button
+                type="button"
+                className="secondary-action"
+                onClick={() => setActiveRouteKey("keys")}
+              >
+                <KeyRound size={17} />
+                <span>配置{platformLabels[selectedPlatform]} Key</span>
+              </button>
+            ) : null}
           </section>
         ) : activeRoute.key === "keys" ? (
           <section className="key-settings" aria-labelledby="key-settings-title">
@@ -880,14 +1064,25 @@ export function App() {
             ) : (
               <>
                 <div className="search-arrival" aria-label="最近一次查询">
-                  <strong>{latestSearch.keyword}</strong>
+                  <strong>
+                    {isBatchSearch(latestSearch)
+                      ? `批量 ${latestSearch.keywords.length} 个关键词`
+                      : latestSearch.keyword}
+                  </strong>
+                  {isBatchSearch(latestSearch) ? (
+                    <span>{latestSearch.keywords.join(" / ")}</span>
+                  ) : null}
                   <span>
                     {platformLabels[latestSearch.platform]} · {latestSearch.region.province ?? "-"}{" "}
                     / {latestSearch.region.city ?? "-"} / {latestSearch.region.district ?? "-"}
                   </span>
                   <small>
                     已返回 {latestSearch.results.length} 条
-                    {latestSearch.total !== null ? ` / 官方总数 ${latestSearch.total}` : ""}
+                    {isBatchSearch(latestSearch)
+                      ? ` / ${latestSearch.searches.length} 次官方查询`
+                      : latestSearch.total !== null
+                        ? ` / 官方总数 ${latestSearch.total}`
+                        : ""}
                   </small>
                 </div>
 

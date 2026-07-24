@@ -4,6 +4,8 @@ import type {
   ApiKeyPlatform,
   ApiKeyResponse,
   ApiKeySaveRequest,
+  BatchKeywordSearchRequest,
+  BatchKeywordSearchResponse,
   HealthResponse,
   KeywordSearchRequest,
   KeywordSearchResponse,
@@ -126,6 +128,15 @@ export function deleteApiKey(platform: ApiKeyPlatform): Promise<ApiKeyDeleteResp
 
 export function searchByKeyword(input: KeywordSearchRequest): Promise<KeywordSearchResponse> {
   return requestJson<KeywordSearchResponse>("/api/searches", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function searchByKeywords(
+  input: BatchKeywordSearchRequest,
+): Promise<BatchKeywordSearchResponse> {
+  return requestJson<BatchKeywordSearchResponse>("/api/searches/batch", {
     method: "POST",
     body: JSON.stringify(input),
   });

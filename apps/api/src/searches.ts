@@ -2,7 +2,7 @@ import type { AuthServiceConfig, KeyEncryptionConfig, ServerConfig } from "@sinl
 import type { Database } from "@sinly/db";
 import { Router } from "express";
 import { requireAuthenticatedUser } from "./auth/middleware.js";
-import { createMapSearchHandler } from "./map-search.js";
+import { createBatchMapSearchHandler, createMapSearchHandler } from "./map-search.js";
 
 interface SearchRouterDependencies {
   auth: AuthServiceConfig;
@@ -20,6 +20,7 @@ export function createSearchRouter(dependencies: SearchRouterDependencies): Rout
   });
 
   router.use(requireUser);
+  router.post("/batch", createBatchMapSearchHandler(dependencies));
   router.post("/", createMapSearchHandler(dependencies));
 
   return router;
