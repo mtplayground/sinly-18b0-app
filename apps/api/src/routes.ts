@@ -3,7 +3,9 @@ import type { AuthServiceConfig, ServerConfig } from "@sinly/config";
 import type { Database } from "@sinly/db";
 import type { HealthResponse } from "@sinly/shared";
 import { mobileRoutes } from "@sinly/shared";
+import { createLoginRouter } from "./auth/login.js";
 import { createRegisterRouter } from "./auth/register.js";
+import { createSessionRouter } from "./auth/session-route.js";
 
 export interface ApiRouterDependencies {
   auth: AuthServiceConfig;
@@ -20,7 +22,23 @@ export function createApiRouter(
 
   router.use(
     "/auth",
+    createLoginRouter({
+      auth: dependencies.auth,
+      database: dependencies.database,
+      server: dependencies.server,
+    }),
+  );
+  router.use(
+    "/auth",
     createRegisterRouter({
+      auth: dependencies.auth,
+      database: dependencies.database,
+      server: dependencies.server,
+    }),
+  );
+  router.use(
+    "/auth",
+    createSessionRouter({
       auth: dependencies.auth,
       database: dependencies.database,
       server: dependencies.server,
