@@ -6,10 +6,13 @@ import {
   Clock3,
   Crown,
   KeyRound,
+  LockKeyhole,
   Loader2,
   LogIn,
   type LucideIcon,
+  MapPin,
   MapPinned,
+  Phone,
   RefreshCw,
   Save,
   Search,
@@ -22,6 +25,7 @@ import type {
   ApiKeySummary,
   HealthResponse,
   KeywordSearchResponse,
+  MapPoiResult,
   MobileRouteDefinition,
   MobileRouteKey,
   PublicUser,
@@ -88,6 +92,8 @@ const platformLabels: Record<ApiKeyPlatform, string> = {
   tencent: "腾讯",
 };
 
+const FREE_RESULT_LIMIT = 10;
+
 const iconByRoute: Record<MobileRouteKey, LucideIcon> = {
   query: Search,
   results: MapPinned,
@@ -132,6 +138,20 @@ function statusLabel(apiState: ApiState): string {
 
 function keyByPlatform(keys: ApiKeySummary[], platform: ApiKeyPlatform): ApiKeySummary | null {
   return keys.find((key) => key.platform === platform) ?? null;
+}
+
+function resultPhone(result: MapPoiResult): string {
+  return result.contact.phone ?? "暂无电话";
+}
+
+function resultAddress(result: MapPoiResult): string {
+  return result.address ?? [result.province, result.city, result.district].filter(Boolean).join("");
+}
+
+function resultRegion(result: MapPoiResult): string {
+  return (
+    [result.province, result.city, result.district].filter(Boolean).join(" / ") || "地区未返回"
+  );
 }
 
 export function App() {
@@ -256,6 +276,20 @@ export function App() {
 
   const ActiveIcon = iconByRoute[activeRoute.key];
   const selectedKey = keyByPlatform(apiKeys, selectedPlatform);
+  const isAnnualMember = user?.membershipStatus === "active";
+  const visibleResults = latestSearch
+    ? latestSearch.results.slice(
+        0,
+        isAnnualMember ? latestSearch.results.length : FREE_RESULT_LIMIT,
+      )
+    : [];
+  const lockedResultCount = latestSearch
+    ? Math.max(
+        (latestSearch.total ?? latestSearch.results.length) -
+          (isAnnualMember ? latestSearch.results.length : FREE_RESULT_LIMIT),
+        0,
+      )
+    : 0;
   const selectedRegion: RegionSelection = findRegionSelection(
     selectedProvinceCode,
     selectedCityCode,
@@ -358,7 +392,7 @@ export function App() {
         city: selectedRegion.city.name,
         district: selectedRegion.county.name,
         page: 1,
-        pageSize: 10,
+        pageSize: 20,
       });
 
       setLatestSearch(payload);
@@ -812,6 +846,106 @@ export function App() {
               })}
             </div>
           </section>
+        ) : activeRoute.key === "results" ? (
+          <section className="results-panel" aria-labelledby="results-title">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">
+                  {latestSearch
+                    ? `${platformLabels[latestSearch.platform]} · ${latestSearch.region.district ?? "全部区域"}`
+                    : "等待查询"}
+                </p>
+                <h2 id="results-title">结果列表</h2>
+              </div>
+              <div className={isAnnualMember ? "member-pill member-active" : "member-pill"}>
+                {isAnnualMember ? <Crown size={15} /> : <LockKeyhole size={15} />}
+                <span>{isAnnualMember ? "年会员" : `免费前 ${FREE_RESULT_LIMIT}`}</span>
+              </div>
+            </div>
+
+            {!latestSearch ? (
+              <div className="empty-results">
+                <Search size={24} />
+                <strong>暂无查询结果</strong>
+                <span>先在查询页选择平台、地区并输入关键词。</span>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() => setActiveRouteKey("query")}
+                >
+                  <Search size={17} />
+                  <span>去查询</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="search-arrival" aria-label="最近一次查询">
+                  <strong>{latestSearch.keyword}</strong>
+                  <span>
+                    {platformLabels[latestSearch.platform]} · {latestSearch.region.province ?? "-"}{" "}
+                    / {latestSearch.region.city ?? "-"} / {latestSearch.region.district ?? "-"}
+                  </span>
+                  <small>
+                    已返回 {latestSearch.results.length} 条
+                    {latestSearch.total !== null ? ` / 官方总数 ${latestSearch.total}` : ""}
+                  </small>
+                </div>
+
+                {visibleResults.length > 0 ? (
+                  <div className="result-list" aria-label="查询结果">
+                    {visibleResults.map((result, index) => (
+                      <article
+                        className="result-card"
+                        key={`${result.provider}-${result.providerPoiId}`}
+                      >
+                        <div className="result-rank">{index + 1}</div>
+                        <div className="result-content">
+                          <div className="result-head">
+                            <h3>{result.name}</h3>
+                            {result.category ? <span>{result.category}</span> : null}
+                          </div>
+                          <p>
+                            <Phone size={15} />
+                            <span>{resultPhone(result)}</span>
+                          </p>
+                          <p>
+                            <MapPin size={15} />
+                            <span>{resultAddress(result) || resultRegion(result)}</span>
+                          </p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-results">
+                    <MapPinned size={24} />
+                    <strong>未返回匹配商家</strong>
+                    <span>可以调整关键词或缩小地区后重新查询。</span>
+                  </div>
+                )}
+
+                {!isAnnualMember && lockedResultCount > 0 ? (
+                  <div className="locked-results" role="note">
+                    <div>
+                      <LockKeyhole size={20} />
+                    </div>
+                    <div>
+                      <strong>还有 {lockedResultCount} 条结果已锁定</strong>
+                      <span>开通年会员后展示全部查询结果，并解锁后续批量与导出能力。</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="upgrade-action"
+                      onClick={() => setActiveRouteKey("membership")}
+                    >
+                      <Crown size={17} />
+                      <span>升级年会员</span>
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </section>
         ) : (
           <div className="panel">
             <div className="panel-title">
@@ -822,19 +956,6 @@ export function App() {
               </div>
             </div>
             <p className="panel-copy">{routeDescription(activeRoute)}</p>
-            {activeRoute.key === "results" && latestSearch ? (
-              <div className="search-arrival" aria-label="最近一次查询">
-                <strong>{latestSearch.keyword}</strong>
-                <span>
-                  {platformLabels[latestSearch.platform]} · {latestSearch.region.province ?? "-"} /{" "}
-                  {latestSearch.region.city ?? "-"} / {latestSearch.region.district ?? "-"}
-                </span>
-                <small>
-                  已返回 {latestSearch.results.length} 条
-                  {latestSearch.total !== null ? ` / 官方总数 ${latestSearch.total}` : ""}
-                </small>
-              </div>
-            ) : null}
             <div className="route-meta">
               <span>当前平台 {platformLabels[selectedPlatform]}</span>
               <span>当前地区 {regionPath}</span>
