@@ -47,6 +47,39 @@ export interface PasswordResetConfirmResponse {
   loginUrl: string;
 }
 
+export type ApiKeyPlatform = "amap" | "baidu" | "tencent";
+
+export const apiKeyPlatforms: readonly ApiKeyPlatform[] = ["amap", "baidu", "tencent"] as const;
+
+export interface ApiKeySummary {
+  id: string;
+  platform: ApiKeyPlatform;
+  label: string | null;
+  keyFingerprint: string;
+  maskedKey: string;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface ApiKeyListResponse {
+  keys: ApiKeySummary[];
+}
+
+export interface ApiKeyResponse {
+  key: ApiKeySummary;
+}
+
+export interface ApiKeyDeleteResponse {
+  deleted: true;
+}
+
+export interface ApiKeySaveRequest {
+  platform: ApiKeyPlatform;
+  apiKey: string;
+  label?: string | null;
+}
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {

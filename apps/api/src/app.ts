@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createApiRouter } from "./routes.js";
 import type { AuthServiceConfig } from "@sinly/config";
 import type { EmailServiceConfig } from "@sinly/config";
+import type { KeyEncryptionConfig } from "@sinly/config";
 import type { ServerConfig } from "@sinly/config";
 import type { Database } from "@sinly/db";
 
@@ -23,6 +24,7 @@ export interface AppDependencies {
   auth: AuthServiceConfig;
   database: Database;
   email: EmailServiceConfig;
+  keyEncryption: KeyEncryptionConfig;
 }
 
 export function createApp(config: ServerConfig, dependencies: AppDependencies): express.Express {
@@ -58,6 +60,7 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
       auth: dependencies.auth,
       database: dependencies.database,
       email: dependencies.email,
+      keyEncryption: dependencies.keyEncryption,
       server: config,
     }),
   );
