@@ -1,0 +1,41 @@
+# Architecture Plan
+
+## Target Structure
+- `apps/web/`: H5 mobile-first frontend, preferably Vite + React + TypeScript unless an issue later requires another stack. Pages are grouped by feature: auth, query, results, key management, membership, history, and profile.
+- `apps/api/`: backend HTTP API, preferably Node.js + TypeScript + Fastify or Express with `trust proxy` enabled for the Ideavibes reverse proxy. Routes are grouped by domain: auth, users, api-keys, regions, searches, membership, payments, and history.
+- `packages/shared/`: shared TypeScript types, API request/response contracts, validation schemas, constants, and feature flags used by both frontend and backend.
+- `packages/db/`: database schema, migrations, data access repositories, and seed/import scripts for region data.
+- `tests/e2e/`: Playwright end-to-end coverage for registration, login, key management, search, membership gates, export, and history.
+- `docs/`: implementation notes for API contracts, payment callbacks, compliance notices, and deployment operations when needed.
+
+## Data Model Areas
+- Users: account identity, password hash, password reset token metadata, profile fields, timestamps, and status.
+- Sessions: login session storage or signed tokens with server-side validation support.
+- API Keys: provider/platform, encrypted key material, display metadata, ownership, active state, and audit timestamps.
+- Regions: province/city/county hierarchy with stable codes and indexes for cascading selection.
+- Searches: query request metadata, provider used, normalized keyword set, limited result snapshots, deduplication fingerprints, exports, and owner.
+- Memberships: plan, status, validity window, renewal records, payment state, and feature entitlement checks.
+- Payments: order, provider transaction reference, callback verification state, amount, currency, and membership linkage.
+
+## Issue Dependencies
+- #1 establishes the monorepo project skeleton and baseline scripts.
+- #2 and #3 must land before persistent features: database connection, migrations, data access layer, environment files, and deployment configuration.
+- #4-#8 build the authentication foundation: user model, registration, login/session validation, password recovery, and H5 auth pages.
+- #9-#11 depend on auth and encryption configuration: API key model, CRUD endpoints, and key management UI.
+- #12-#16 form the core search workflow: region data, official map API service, query endpoint, search UI, and top-10 limited results page.
+- #17-#19 depend on membership status checks from #20 but may be implemented after the basic search path: batch query, deduplication/formatting, and CSV/Excel export.
+- #20-#22 define monetization: membership model, entitlement checks, payment flow, and membership UI.
+- #23-#25 depend on auth and search persistence: history APIs, history page, and personal center.
+- #26 validates critical flows across frontend and backend.
+- #27 should be applied across all endpoints and screens once core flows exist: error handling, user-facing messages, compliance notices, and provider usage warnings.
+- #28 finalizes responsive behavior, production build settings, proxy-aware origin handling, and deployment readiness.
+
+## Key Design Decisions
+- Use TypeScript across frontend, backend, shared contracts, and tests to keep API contracts consistent.
+- Keep validation schemas in `packages/shared` and reuse them at HTTP boundaries and form boundaries.
+- Keep database access behind repository/service modules so future issue work does not couple routes directly to SQL.
+- Encrypt third-party API keys at rest with an environment-provided secret; never return plaintext keys after creation/update.
+- Derive public host/protocol from forwarded headers or `ALLOWED_CORS_ORIGIN`; do not gate static assets by the internal `Host` header.
+- Treat membership entitlements as backend-enforced capabilities. Frontend controls may hide member features, but API endpoints must still validate status.
+- Store normalized search history and export metadata separately from transient provider responses so history and export features can evolve independently.
+- Add end-to-end tests around complete user journeys after the main flows are available rather than only testing isolated pages.
