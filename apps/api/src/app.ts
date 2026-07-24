@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApiRouter } from "./routes.js";
-import type { RuntimeConfig } from "./config.js";
+import type { ServerConfig } from "@sinly/config";
 import type { Database } from "@sinly/db";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,7 +20,7 @@ export interface AppDependencies {
   database: Database;
 }
 
-export function createApp(config: RuntimeConfig, dependencies: AppDependencies): express.Express {
+export function createApp(config: ServerConfig, dependencies: AppDependencies): express.Express {
   const app = express();
   const startedAt = Date.now();
   const version = process.env.npm_package_version ?? "0.1.0";

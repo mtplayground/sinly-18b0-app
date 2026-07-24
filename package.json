@@ -8,7 +8,8 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @sinly/shared && npm run build --workspace @sinly/db && npm run build --workspace @sinly/api && npm run build --workspace @sinly/web",
+    "build": "npm run build --workspace @sinly/shared && npm run build --workspace @sinly/db && npm run build --workspace @sinly/config && npm run build --workspace @sinly/api && npm run build --workspace @sinly/web",
+    "config:check": "npm run check --workspace @sinly/config",
     "db:check": "npm run check --workspace @sinly/db",
     "db:migrate": "npm run migrate --workspace @sinly/db",
     "dev": "npm run dev --workspace @sinly/api",
