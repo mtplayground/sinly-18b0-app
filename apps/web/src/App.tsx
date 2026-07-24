@@ -54,7 +54,6 @@ import {
   loadHealth,
   loadMobileShell,
   requestLogin,
-  requestRegister,
   searchByKeyword,
   searchByKeywords,
   updateApiKey,
@@ -62,7 +61,6 @@ import {
 } from "./api";
 
 type ApiState = "checking" | "ready" | "offline";
-type AuthMode = "login" | "register";
 type AuthStatus = "checking" | "guest" | "authenticated";
 type SubmitState = "idle" | "submitting";
 type KeySyncState = "idle" | "loading" | "ready" | "error";
@@ -160,10 +158,6 @@ function routeDescription(route: MobileRouteDefinition): string {
   };
 
   return descriptions[route.key];
-}
-
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function userDisplayName(user: PublicUser): string {
@@ -406,8 +400,6 @@ export function App() {
   const [activeRouteKey, setActiveRouteKey] = useState<MobileRouteKey>("query");
   const [apiState, setApiState] = useState<ApiState>("checking");
   const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [email, setEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -1022,35 +1014,20 @@ export function App() {
     setSelectedCountyCode(county.code);
   }
 
-  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!isValidEmail(normalizedEmail)) {
-      setFormError("请输入有效的邮箱地址。");
-      return;
-    }
-
+  async function handlePlatformLogin() {
     setSubmitState("submitting");
     setFormError(null);
 
     try {
-      if (authMode === "login") {
-        const payload = await requestLogin();
-        window.location.assign(payload.loginUrl);
-        return;
-      }
-
-      const payload = await requestRegister(normalizedEmail);
-      setUser(payload.user);
-      setAuthStatus("authenticated");
+      const payload = await requestLogin();
+      window.location.assign(payload.loginUrl);
     } catch (error) {
       if (error instanceof ApiRequestError && error.loginUrl) {
         window.location.assign(error.loginUrl);
         return;
       }
 
-      setFormError(friendlyApiMessage(error, "请求失败，请检查网络后重试。"));
+      setFormError(friendlyApiMessage(error, "平台登录暂时不可用，请稍后重试。"));
       setSubmitState("idle");
     }
   }
@@ -1079,49 +1056,12 @@ export function App() {
               <ShieldCheck size={28} />
             </div>
             <p className="eyebrow">账号访问</p>
-            <h1 id="auth-title">{authMode === "login" ? "登录" : "注册"}</h1>
+            <h1 id="auth-title">登录</h1>
             <p className="auth-copy">
-              使用邮箱完成身份校验。提交后会跳转到平台认证页，认证成功后回到当前应用。
+              使用平台账号统一登录。邮箱与账号信息会在登录成功后从安全会话中读取。
             </p>
 
-            <div className="segmented" role="tablist" aria-label="账号操作">
-              <button
-                type="button"
-                className={authMode === "login" ? "segment segment-active" : "segment"}
-                aria-selected={authMode === "login"}
-                onClick={() => {
-                  setAuthMode("login");
-                  setFormError(null);
-                }}
-              >
-                登录
-              </button>
-              <button
-                type="button"
-                className={authMode === "register" ? "segment segment-active" : "segment"}
-                aria-selected={authMode === "register"}
-                onClick={() => {
-                  setAuthMode("register");
-                  setFormError(null);
-                }}
-              >
-                注册
-              </button>
-            </div>
-
-            <form className="auth-form" onSubmit={handleAuthSubmit} noValidate>
-              <label htmlFor="email">邮箱</label>
-              <input
-                id="email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                placeholder="name@example.com"
-                value={email}
-                aria-invalid={Boolean(formError)}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-
+            <div className="auth-form">
               {formError ? (
                 <p className="form-error" role="alert">
                   <AlertCircle size={16} />
@@ -1131,18 +1071,19 @@ export function App() {
 
               <button
                 className="primary-action"
-                type="submit"
+                type="button"
                 disabled={submitState === "submitting"}
+                onClick={() => void handlePlatformLogin()}
               >
                 {submitState === "submitting" ? (
                   <Loader2 className="spin" size={19} />
                 ) : (
                   <LogIn size={19} />
                 )}
-                <span>{authMode === "login" ? "继续登录" : "继续注册"}</span>
+                <span>使用平台账号登录</span>
                 <ArrowRight size={18} />
               </button>
-            </form>
+            </div>
           </section>
         </main>
         <MctaiWatermark />
