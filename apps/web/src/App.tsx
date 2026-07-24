@@ -113,6 +113,8 @@ const platformLabels: Record<ApiKeyPlatform, string> = {
 const FREE_RESULT_LIMIT = 10;
 const MAX_BATCH_KEYWORDS = 5;
 const ANNUAL_PRICE_CENTS = 19900;
+const EXPORT_COMPLIANCE_NOTICE =
+  "仅可在合法授权范围内使用导出数据，避免超范围留存、共享或处理个人信息。";
 
 const paymentProviderLabels: Record<PaymentProvider, string> = {
   alipay: "支付宝",
@@ -323,6 +325,36 @@ function isBatchSearch(
   return "batch" in search && search.batch;
 }
 
+function friendlyApiMessage(error: unknown, fallback: string, platform?: ApiKeyPlatform): string {
+  if (!(error instanceof ApiRequestError)) {
+    return fallback;
+  }
+
+  const platformName = platform ? platformLabels[platform] : "当前平台";
+  const messages: Record<string, string> = {
+    AUTH_NOT_CONFIGURED: "认证服务暂未配置，请稍后再试。",
+    INVALID_EMAIL: "邮箱格式不正确。",
+    KEY_ENCRYPTION_NOT_CONFIGURED: "Key 加密配置未启用，请联系管理员检查服务配置。",
+    API_KEY_ALREADY_EXISTS: `${platformName} Key 已存在，如需更换请使用更新。`,
+    API_KEY_NOT_FOUND: `${platformName} Key 不存在，请重新保存后再试。`,
+    MAP_API_KEY_NOT_FOUND: `${platformName}未配置 Key，请先在 Key 页保存官方地图 Key。`,
+    MAP_API_KEY_INVALID: `${platformName} Key 无效或未开通当前接口，请检查 Key 后重试。`,
+    MAP_PROVIDER_QUOTA_EXCEEDED: `${platformName} 官方额度已用尽或触发限频，请在平台控制台确认配额后再试。`,
+    MAP_PROVIDER_TIMEOUT: "地图服务响应超时，请稍后重试。",
+    MAP_PROVIDER_NETWORK_ERROR: "地图服务网络异常，请检查网络或稍后重试。",
+    MAP_PROVIDER_ERROR: `${platformName} 查询失败，请稍后重试或切换平台 Key。`,
+    INVALID_MAP_SEARCH_REQUEST: "查询条件不完整，请检查平台、地区和关键词。",
+    INVALID_BATCH_MAP_SEARCH_REQUEST: "批量查询条件不完整，请检查平台、关键词数量和地区。",
+    MEMBERSHIP_REQUIRED: "该功能仅年会员可用，请开通或续费后继续。",
+    INVALID_EXPORT_REQUEST: "导出内容为空或格式不正确。",
+    INVALID_PAYMENT_PROVIDER: "请选择支付方式。",
+    PAYMENT_SIGNATURE_INVALID: "支付回调校验失败，请稍后刷新订单状态。",
+    PAYMENT_ORDER_NOT_FOUND: "支付订单不存在，请重新下单。",
+  };
+
+  return messages[error.code] ?? error.message ?? fallback;
+}
+
 export function App() {
   const [activeRouteKey, setActiveRouteKey] = useState<MobileRouteKey>("query");
   const [apiState, setApiState] = useState<ApiState>("checking");
@@ -437,11 +469,7 @@ export function App() {
       .catch((error: unknown) => {
         if (!cancelled) {
           setKeySyncState("error");
-          setKeyError(
-            error instanceof ApiRequestError && error.code === "KEY_ENCRYPTION_NOT_CONFIGURED"
-              ? "Key 加密配置未启用。"
-              : "Key 状态同步失败，请稍后重试。",
-          );
+          setKeyError(friendlyApiMessage(error, "Key 状态同步失败，请稍后重试。"));
         }
       });
 
@@ -564,11 +592,7 @@ export function App() {
       setPlatformForm(platform, { apiKey: "" });
       await reloadApiKeys();
     } catch (error) {
-      setKeyError(
-        error instanceof ApiRequestError && error.code === "KEY_ENCRYPTION_NOT_CONFIGURED"
-          ? "Key 加密配置未启用。"
-          : "Key 保存失败，请检查后重试。",
-      );
+      setKeyError(friendlyApiMessage(error, "Key 保存失败，请检查后重试。", platform));
     } finally {
       setKeySavingPlatform(null);
     }
@@ -633,19 +657,7 @@ export function App() {
         return;
       }
 
-      if (error instanceof ApiRequestError && error.code === "MAP_API_KEY_NOT_FOUND") {
-        setQueryError(
-          `当前平台未配置 Key，请先在 Key 页保存${platformLabels[selectedPlatform]} Key。`,
-        );
-        return;
-      }
-
-      if (error instanceof ApiRequestError && error.code === "INVALID_MAP_SEARCH_REQUEST") {
-        setQueryError("查询条件不完整，请检查平台和关键词。");
-        return;
-      }
-
-      setQueryError("查询失败，请稍后重试。");
+      setQueryError(friendlyApiMessage(error, "查询失败，请稍后重试。", selectedPlatform));
     }
   }
 
@@ -705,24 +717,7 @@ export function App() {
         return;
       }
 
-      if (error instanceof ApiRequestError && error.code === "MEMBERSHIP_REQUIRED") {
-        setQueryError("批量关键词查询仅年会员可用。");
-        return;
-      }
-
-      if (error instanceof ApiRequestError && error.code === "MAP_API_KEY_NOT_FOUND") {
-        setQueryError(
-          `当前平台未配置 Key，请先在 Key 页保存${platformLabels[selectedPlatform]} Key。`,
-        );
-        return;
-      }
-
-      if (error instanceof ApiRequestError && error.code === "INVALID_BATCH_MAP_SEARCH_REQUEST") {
-        setQueryError("批量查询条件不完整，请检查平台、关键词数量和地区。");
-        return;
-      }
-
-      setQueryError("批量查询失败，请稍后重试。");
+      setQueryError(friendlyApiMessage(error, "批量查询失败，请稍后重试。", selectedPlatform));
     }
   }
 
@@ -743,6 +738,12 @@ export function App() {
     setExportError(null);
 
     try {
+      const acceptedCompliance = window.confirm(EXPORT_COMPLIANCE_NOTICE);
+      if (!acceptedCompliance) {
+        setExportState("idle");
+        return;
+      }
+
       const download = await exportResults({
         format,
         title: isBatchSearch(latestSearch)
@@ -761,21 +762,14 @@ export function App() {
       } finally {
         URL.revokeObjectURL(url);
       }
+      if (download.complianceNotice) {
+        setExportError(null);
+      }
       setExportState("idle");
     } catch (error) {
       setExportState("error");
 
-      if (error instanceof ApiRequestError && error.code === "MEMBERSHIP_REQUIRED") {
-        setExportError("导出 Excel/CSV 仅年会员可用。");
-        return;
-      }
-
-      if (error instanceof ApiRequestError && error.code === "INVALID_EXPORT_REQUEST") {
-        setExportError("导出内容为空或格式不正确。");
-        return;
-      }
-
-      setExportError("导出失败，请稍后重试。");
+      setExportError(friendlyApiMessage(error, "导出失败，请稍后重试。"));
     }
   }
 
@@ -813,12 +807,7 @@ export function App() {
         return;
       }
 
-      if (error instanceof ApiRequestError && error.code === "INVALID_PAYMENT_PROVIDER") {
-        setPaymentError("请选择支付方式。");
-        return;
-      }
-
-      setPaymentError("创建支付订单失败，请稍后重试。");
+      setPaymentError(friendlyApiMessage(error, "创建支付订单失败，请稍后重试。"));
     }
   }
 
@@ -948,19 +937,7 @@ export function App() {
         return;
       }
 
-      if (error instanceof ApiRequestError && error.code === "MAP_API_KEY_NOT_FOUND") {
-        setQueryError(
-          `当前平台未配置 Key，请先在 Key 页保存${platformLabels[item.platform]} Key。`,
-        );
-        return;
-      }
-
-      if (error instanceof ApiRequestError && error.code === "MEMBERSHIP_REQUIRED") {
-        setQueryError("批量关键词查询仅年会员可用。");
-        return;
-      }
-
-      setQueryError("再次查询失败，请稍后重试。");
+      setQueryError(friendlyApiMessage(error, "再次查询失败，请稍后重试。", item.platform));
     }
   }
 
@@ -1017,13 +994,7 @@ export function App() {
         return;
       }
 
-      if (error instanceof ApiRequestError && error.code === "AUTH_NOT_CONFIGURED") {
-        setFormError("认证服务暂未配置，请稍后再试。");
-      } else if (error instanceof ApiRequestError && error.code === "INVALID_EMAIL") {
-        setFormError("邮箱格式不正确。");
-      } else {
-        setFormError("请求失败，请检查网络后重试。");
-      }
+      setFormError(friendlyApiMessage(error, "请求失败，请检查网络后重试。"));
       setSubmitState("idle");
     }
   }
@@ -1532,7 +1503,7 @@ export function App() {
                 <div className="export-panel" role="note">
                   <div>
                     <strong>导出整理结果</strong>
-                    <span>仅在合法授权范围内使用，避免超范围留存或共享个人信息。</span>
+                    <span>{EXPORT_COMPLIANCE_NOTICE}</span>
                   </div>
                   {isAnnualMember ? (
                     <div className="export-actions">
