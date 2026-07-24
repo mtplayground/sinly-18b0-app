@@ -110,7 +110,7 @@ const iconByRoute: Record<MobileRouteKey, LucideIcon> = {
 function routeDescription(route: MobileRouteDefinition): string {
   const descriptions: Record<MobileRouteKey, string> = {
     query: "核心查询入口会使用当前选择的平台 Key 发起云端查询。",
-    results: "承载列表结果、数量限制与后续格式整理能力。",
+    results: "展示去重后的查询结果，并对电话、地址等字段做格式整理。",
     keys: "管理三平台 Key，并切换当前查询平台。",
     membership: "预留会员状态、开通续费与权益提示入口。",
     history: "预留查询历史筛选与复用入口。",
@@ -1084,6 +1084,7 @@ export function App() {
                         ? ` / 官方总数 ${latestSearch.total}`
                         : ""}
                   </small>
+                  {isAnnualMember ? <small>已自动去重并整理电话、地址格式</small> : null}
                 </div>
 
                 {visibleResults.length > 0 ? (
