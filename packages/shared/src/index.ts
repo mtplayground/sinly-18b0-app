@@ -124,6 +124,9 @@ export interface MapPoiSearchResponse {
   results: MapPoiResult[];
 }
 
+export type KeywordSearchRequest = MapPoiSearchRequest;
+export type KeywordSearchResponse = MapPoiSearchResponse;
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {

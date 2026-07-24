@@ -14,6 +14,7 @@ import { createPasswordResetRouter } from "./auth/password-reset.js";
 import { createRegisterRouter } from "./auth/register.js";
 import { createSessionRouter } from "./auth/session-route.js";
 import { createMapSearchRouter } from "./map-search.js";
+import { createSearchRouter } from "./searches.js";
 
 export interface ApiRouterDependencies {
   auth: AuthServiceConfig;
@@ -75,6 +76,15 @@ export function createApiRouter(
   router.use(
     "/map-search",
     createMapSearchRouter({
+      auth: dependencies.auth,
+      database: dependencies.database,
+      keyEncryption: dependencies.keyEncryption,
+      server: dependencies.server,
+    }),
+  );
+  router.use(
+    "/searches",
+    createSearchRouter({
       auth: dependencies.auth,
       database: dependencies.database,
       keyEncryption: dependencies.keyEncryption,
