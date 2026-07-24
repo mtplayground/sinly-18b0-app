@@ -5,6 +5,10 @@ export interface HealthResponse {
   service: "api";
   version: string;
   uptimeSeconds: number;
+  database: {
+    status: ApiStatus;
+    latencyMs: number;
+  };
 }
 
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";

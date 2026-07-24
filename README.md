@@ -15,6 +15,8 @@ npm install
 npm run build
 npm run lint
 npm run format
+npm run db:migrate
+npm run db:check
 npm run dev
 ```
 
@@ -23,3 +25,5 @@ The production entrypoint is:
 ```bash
 npm start
 ```
+
+Database commands require `DATABASE_URL` to point at PostgreSQL.
