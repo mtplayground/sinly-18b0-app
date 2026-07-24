@@ -57,7 +57,10 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export function toPublicUser(user: UserRecord): PublicUser {
+export function toPublicUser(
+  user: UserRecord,
+  membershipExpiresAt: Date | null = null,
+): PublicUser {
   return {
     sub: user.sub,
     email: user.email,
@@ -65,6 +68,7 @@ export function toPublicUser(user: UserRecord): PublicUser {
     name: user.name,
     pictureUrl: user.pictureUrl,
     membershipStatus: user.membershipStatus,
+    membershipExpiresAt: membershipExpiresAt?.toISOString() ?? null,
     registeredAt: user.registeredAt.toISOString(),
     lastSeenAt: user.lastSeenAt.toISOString(),
   };

@@ -18,6 +18,7 @@ export interface PublicUser {
   name: string | null;
   pictureUrl: string | null;
   membershipStatus: "none" | "active" | "expired" | "cancelled";
+  membershipExpiresAt: string | null;
   registeredAt: string;
   lastSeenAt: string;
 }
