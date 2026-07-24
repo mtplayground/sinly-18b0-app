@@ -355,6 +355,53 @@ function friendlyApiMessage(error: unknown, fallback: string, platform?: ApiKeyP
   return messages[error.code] ?? error.message ?? fallback;
 }
 
+function MctaiWatermark() {
+  const [shouldRender, setShouldRender] = useState(false);
+  const [shareLabel, setShareLabel] = useState("Share");
+
+  useEffect(() => {
+    setShouldRender(!document.getElementById("mctai-watermark"));
+  }, []);
+
+  async function handleShare() {
+    const payload = {
+      title: document.title || "Ideavibes app",
+      text: "Built with Ideavibes.ai",
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(payload);
+        return;
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(window.location.href);
+        setShareLabel("Copied");
+        window.setTimeout(() => setShareLabel("Share"), 1600);
+      }
+    } catch {
+      setShareLabel("Share");
+    }
+  }
+
+  if (!shouldRender) {
+    return null;
+  }
+
+  return (
+    <div id="mctai-watermark" className="mctai-watermark">
+      <a href="https://ideavibes.ai" target="_blank" rel="noopener noreferrer">
+        Built by Ideavibes.ai
+      </a>
+      <button type="button" onClick={() => void handleShare()}>
+        {shareLabel}
+      </button>
+    </div>
+  );
+}
+
 export function App() {
   const [activeRouteKey, setActiveRouteKey] = useState<MobileRouteKey>("query");
   const [apiState, setApiState] = useState<ApiState>("checking");
@@ -401,8 +448,12 @@ export function App() {
     getSession()
       .then((payload) => {
         if (!cancelled) {
-          setUser(payload.user);
-          setAuthStatus("authenticated");
+          if (payload.authenticated) {
+            setUser(payload.user);
+            setAuthStatus("authenticated");
+          } else {
+            setAuthStatus("guest");
+          }
         }
       })
       .catch((error: unknown) => {
@@ -775,8 +826,13 @@ export function App() {
 
   async function refreshSessionUser() {
     const payload = await getSession();
-    setUser(payload.user);
-    setAuthStatus("authenticated");
+    if (payload.authenticated) {
+      setUser(payload.user);
+      setAuthStatus("authenticated");
+    } else {
+      setUser(null);
+      setAuthStatus("guest");
+    }
   }
 
   async function handleCreatePaymentOrder() {
@@ -1001,90 +1057,96 @@ export function App() {
 
   if (authStatus === "checking") {
     return (
-      <main className="app-shell auth-shell">
-        <section className="auth-panel" aria-live="polite">
-          <Loader2 className="spin" size={26} />
-          <h1>正在校验登录态</h1>
-          <p>请稍候，正在从云端读取会话。</p>
-        </section>
-      </main>
+      <>
+        <main className="app-shell auth-shell">
+          <section className="auth-panel" aria-live="polite">
+            <Loader2 className="spin" size={26} />
+            <h1>正在校验登录态</h1>
+            <p>请稍候，正在从云端读取会话。</p>
+          </section>
+        </main>
+        <MctaiWatermark />
+      </>
     );
   }
 
   if (authStatus === "guest") {
     return (
-      <main className="app-shell auth-shell">
-        <section className="auth-panel" aria-labelledby="auth-title">
-          <div className="auth-icon" aria-hidden="true">
-            <ShieldCheck size={28} />
-          </div>
-          <p className="eyebrow">账号访问</p>
-          <h1 id="auth-title">{authMode === "login" ? "登录" : "注册"}</h1>
-          <p className="auth-copy">
-            使用邮箱完成身份校验。提交后会跳转到平台认证页，认证成功后回到当前应用。
-          </p>
+      <>
+        <main className="app-shell auth-shell">
+          <section className="auth-panel" aria-labelledby="auth-title">
+            <div className="auth-icon" aria-hidden="true">
+              <ShieldCheck size={28} />
+            </div>
+            <p className="eyebrow">账号访问</p>
+            <h1 id="auth-title">{authMode === "login" ? "登录" : "注册"}</h1>
+            <p className="auth-copy">
+              使用邮箱完成身份校验。提交后会跳转到平台认证页，认证成功后回到当前应用。
+            </p>
 
-          <div className="segmented" role="tablist" aria-label="账号操作">
-            <button
-              type="button"
-              className={authMode === "login" ? "segment segment-active" : "segment"}
-              aria-selected={authMode === "login"}
-              onClick={() => {
-                setAuthMode("login");
-                setFormError(null);
-              }}
-            >
-              登录
-            </button>
-            <button
-              type="button"
-              className={authMode === "register" ? "segment segment-active" : "segment"}
-              aria-selected={authMode === "register"}
-              onClick={() => {
-                setAuthMode("register");
-                setFormError(null);
-              }}
-            >
-              注册
-            </button>
-          </div>
+            <div className="segmented" role="tablist" aria-label="账号操作">
+              <button
+                type="button"
+                className={authMode === "login" ? "segment segment-active" : "segment"}
+                aria-selected={authMode === "login"}
+                onClick={() => {
+                  setAuthMode("login");
+                  setFormError(null);
+                }}
+              >
+                登录
+              </button>
+              <button
+                type="button"
+                className={authMode === "register" ? "segment segment-active" : "segment"}
+                aria-selected={authMode === "register"}
+                onClick={() => {
+                  setAuthMode("register");
+                  setFormError(null);
+                }}
+              >
+                注册
+              </button>
+            </div>
 
-          <form className="auth-form" onSubmit={handleAuthSubmit} noValidate>
-            <label htmlFor="email">邮箱</label>
-            <input
-              id="email"
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              placeholder="name@example.com"
-              value={email}
-              aria-invalid={Boolean(formError)}
-              onChange={(event) => setEmail(event.target.value)}
-            />
+            <form className="auth-form" onSubmit={handleAuthSubmit} noValidate>
+              <label htmlFor="email">邮箱</label>
+              <input
+                id="email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                placeholder="name@example.com"
+                value={email}
+                aria-invalid={Boolean(formError)}
+                onChange={(event) => setEmail(event.target.value)}
+              />
 
-            {formError ? (
-              <p className="form-error" role="alert">
-                <AlertCircle size={16} />
-                {formError}
-              </p>
-            ) : null}
+              {formError ? (
+                <p className="form-error" role="alert">
+                  <AlertCircle size={16} />
+                  {formError}
+                </p>
+              ) : null}
 
-            <button
-              className="primary-action"
-              type="submit"
-              disabled={submitState === "submitting"}
-            >
-              {submitState === "submitting" ? (
-                <Loader2 className="spin" size={19} />
-              ) : (
-                <LogIn size={19} />
-              )}
-              <span>{authMode === "login" ? "继续登录" : "继续注册"}</span>
-              <ArrowRight size={18} />
-            </button>
-          </form>
-        </section>
-      </main>
+              <button
+                className="primary-action"
+                type="submit"
+                disabled={submitState === "submitting"}
+              >
+                {submitState === "submitting" ? (
+                  <Loader2 className="spin" size={19} />
+                ) : (
+                  <LogIn size={19} />
+                )}
+                <span>{authMode === "login" ? "继续登录" : "继续注册"}</span>
+                <ArrowRight size={18} />
+              </button>
+            </form>
+          </section>
+        </main>
+        <MctaiWatermark />
+      </>
     );
   }
 
@@ -2030,6 +2092,7 @@ export function App() {
           );
         })}
       </nav>
+      <MctaiWatermark />
     </main>
   );
 }

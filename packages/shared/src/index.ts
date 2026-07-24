@@ -32,10 +32,15 @@ export interface LoginResponse {
   loginUrl: string;
 }
 
-export interface SessionResponse {
-  authenticated: true;
-  user: PublicUser;
-}
+export type SessionResponse =
+  | {
+      authenticated: true;
+      user: PublicUser;
+    }
+  | {
+      authenticated: false;
+      loginUrl?: string;
+    };
 
 export interface PasswordResetRequestResponse {
   accepted: true;

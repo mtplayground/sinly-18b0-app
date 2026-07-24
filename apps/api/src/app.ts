@@ -21,6 +21,56 @@ function resolveWebDist(): string {
   return process.env.WEB_DIST_DIR ?? path.resolve(__dirname, "../../web/dist");
 }
 
+function hostWithoutPort(value: string): string {
+  return value.trim().toLowerCase().replace(/:\d+$/, "");
+}
+
+function hostFromConfiguredOrigin(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return hostWithoutPort(new URL(trimmed).host);
+  } catch {
+    return hostWithoutPort(trimmed.replace(/^https?:\/\//i, ""));
+  }
+}
+
+function publicRequestHost(req: express.Request): string {
+  const forwardedHost = String(req.headers["x-forwarded-host"] ?? "")
+    .split(",")[0]
+    ?.trim();
+  const host = forwardedHost || req.get("host") || "";
+  return hostWithoutPort(host);
+}
+
+function isAllowedCorsOrigin(
+  req: express.Request,
+  config: ServerConfig,
+  origin: string | undefined,
+): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  let originHost: string;
+  try {
+    originHost = hostWithoutPort(new URL(origin).host);
+  } catch {
+    return false;
+  }
+
+  const configuredHosts = [config.allowedCorsOrigin, config.selfUrl]
+    .filter((value): value is string => Boolean(value))
+    .flatMap((value) => value.split(","))
+    .map(hostFromConfiguredOrigin)
+    .filter((value): value is string => Boolean(value));
+
+  return originHost === publicRequestHost(req) || configuredHosts.includes(originHost);
+}
+
 export interface AppDependencies {
   auth: AuthServiceConfig;
   database: Database;
@@ -59,16 +109,17 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
   );
 
   app.use(
-    cors({
-      origin(origin, callback) {
-        if (!origin || !config.allowedCorsOrigin || origin === config.allowedCorsOrigin) {
-          callback(null, true);
-          return;
-        }
-
+    cors((req, callback) => {
+      const origin = req.get("origin");
+      if (!isAllowedCorsOrigin(req, config, origin)) {
         callback(new Error(`Origin not allowed: ${origin}`));
-      },
-      credentials: true,
+        return;
+      }
+
+      callback(null, {
+        credentials: true,
+        origin: true,
+      });
     }),
   );
 

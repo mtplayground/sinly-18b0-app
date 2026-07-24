@@ -1,16 +1,27 @@
 import { Router } from "express";
 import type { SessionResponse } from "@sinly/shared";
 import type { AuthDependencies } from "./common.js";
-import { getAuthenticatedUser, requireAuthenticatedUser } from "./middleware.js";
-import { toPublicUser } from "./common.js";
+import { authenticateRequest, buildLoginUrl, isAuthConfigured, toPublicUser } from "./common.js";
 import { checkActiveMembership } from "../membership.js";
 
 export function createSessionRouter(dependencies: AuthDependencies): Router {
   const router = Router();
 
-  router.get("/session", requireAuthenticatedUser(dependencies), async (_req, res, next) => {
+  router.get("/session", async (req, res, next) => {
     try {
-      const authContext = getAuthenticatedUser(res);
+      const authContext = await authenticateRequest(req, dependencies);
+      if (!authContext) {
+        const payload: SessionResponse = {
+          authenticated: false,
+          loginUrl: isAuthConfigured(dependencies.auth)
+            ? buildLoginUrl(req, dependencies.server, dependencies.auth)
+            : undefined,
+        };
+
+        res.json(payload);
+        return;
+      }
+
       const membership = await checkActiveMembership(dependencies.database, authContext.user);
       const payload: SessionResponse = {
         authenticated: true,

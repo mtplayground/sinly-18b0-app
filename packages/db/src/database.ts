@@ -19,7 +19,6 @@ export class Database {
       max: config.maxConnections,
       idleTimeoutMillis: config.idleTimeoutMillis,
       connectionTimeoutMillis: config.connectionTimeoutMillis,
-      statement_timeout: config.statementTimeoutMillis,
       ssl: config.ssl,
     });
   }
