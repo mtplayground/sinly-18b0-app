@@ -134,3 +134,6 @@ export const mobileRoutes: readonly MobileRouteDefinition[] = [
     issue: 25,
   },
 ] as const;
+
+export { chinaRegions, findRegionSelection } from "./regions.js";
+export type { ChinaCity, ChinaCounty, ChinaProvince, RegionSelection } from "./regions.js";
