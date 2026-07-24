@@ -23,19 +23,30 @@ export interface ErrorWithCode {
   constraint?: string;
 }
 
+function firstHeaderValue(value: string | undefined): string | null {
+  const first = value?.split(",")[0]?.trim();
+  return first ? first : null;
+}
+
+function requestProtocol(req: Request): string {
+  const forwardedProto = firstHeaderValue(req.get("x-forwarded-proto"));
+  const protocol = forwardedProto ?? req.protocol?.trim() ?? "";
+  return protocol ? protocol.replace(/:$/, "") : "https";
+}
+
 export function publicOrigin(req: Request, server: ServerConfig): string {
+  const requestHost =
+    firstHeaderValue(req.get("x-forwarded-host")) ?? firstHeaderValue(req.get("host"));
+
+  if (requestHost) {
+    return new URL(`${requestProtocol(req)}://${requestHost}`).origin;
+  }
+
   if (server.selfUrl) {
     return new URL(server.selfUrl).origin;
   }
 
-  const forwardedHost = req.get("x-forwarded-host");
-  const host = forwardedHost ?? req.get("host");
-  if (!host) {
-    throw new Error("Unable to determine public host for auth redirect");
-  }
-
-  const proto = req.get("x-forwarded-proto") ?? req.protocol;
-  return `${proto}://${host}`;
+  throw new Error("Unable to determine public host for auth redirect");
 }
 
 export function isAuthConfigured(auth: AuthServiceConfig): auth is Required<AuthServiceConfig> {
