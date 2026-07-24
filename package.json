@@ -16,7 +16,9 @@
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "start": "npm run start --workspace @sinly/api"
+    "start": "npm run start --workspace @sinly/api",
+    "test": "npm run test:e2e",
+    "test:e2e": "npm run build && tsx tests/e2e/critical-flow.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

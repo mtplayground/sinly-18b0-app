@@ -183,7 +183,7 @@ function createExportResultsHandler(database: Database): RequestHandler {
       const extension = body.format === "csv" ? "csv" : "xls";
       const filename = `poi-results-${timestampForFilename()}.${extension}`;
 
-      res.setHeader("X-Export-Compliance-Notice", COMPLIANCE_NOTICE);
+      res.setHeader("X-Export-Compliance-Notice", encodeURIComponent(COMPLIANCE_NOTICE));
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
       if (body.format === "csv") {
