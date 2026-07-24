@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Crown,
+  Download,
   KeyRound,
   LockKeyhole,
   Loader2,
@@ -31,12 +32,14 @@ import type {
   MobileRouteKey,
   PublicUser,
   RegionSelection,
+  ResultExportFormat,
 } from "@sinly/shared";
 import { apiKeyPlatforms, chinaRegions, findRegionSelection, mobileRoutes } from "@sinly/shared";
 import {
   ApiRequestError,
   createApiKey,
   deleteApiKey,
+  exportResults,
   getSession,
   listApiKeys,
   loadHealth,
@@ -56,6 +59,7 @@ type SubmitState = "idle" | "submitting";
 type KeySyncState = "idle" | "loading" | "ready" | "error";
 type QueryState = "idle" | "searching" | "done" | "error";
 type QueryMode = "single" | "batch";
+type ExportState = "idle" | "exporting" | "error";
 
 interface ApiKeyFormState {
   apiKey: string;
@@ -201,6 +205,8 @@ export function App() {
   const [batchKeywords, setBatchKeywords] = useState("");
   const [queryState, setQueryState] = useState<QueryState>("idle");
   const [queryError, setQueryError] = useState<string | null>(null);
+  const [exportState, setExportState] = useState<ExportState>("idle");
+  const [exportError, setExportError] = useState<string | null>(null);
   const [latestSearch, setLatestSearch] = useState<
     KeywordSearchResponse | BatchKeywordSearchResponse | null
   >(null);
@@ -421,6 +427,8 @@ export function App() {
       });
 
       setLatestSearch(payload);
+      setExportError(null);
+      setExportState("idle");
       setQueryState("done");
       setActiveRouteKey("results");
     } catch (error) {
@@ -491,6 +499,8 @@ export function App() {
       });
 
       setLatestSearch(payload);
+      setExportError(null);
+      setExportState("idle");
       setQueryState("done");
       setActiveRouteKey("results");
     } catch (error) {
@@ -519,6 +529,59 @@ export function App() {
       }
 
       setQueryError("批量查询失败，请稍后重试。");
+    }
+  }
+
+  async function handleExportResults(format: ResultExportFormat) {
+    if (!latestSearch) {
+      setExportState("error");
+      setExportError("暂无可导出的结果。");
+      return;
+    }
+
+    if (!isAnnualMember) {
+      setExportState("error");
+      setExportError("导出 Excel/CSV 仅年会员可用。");
+      return;
+    }
+
+    setExportState("exporting");
+    setExportError(null);
+
+    try {
+      const download = await exportResults({
+        format,
+        title: isBatchSearch(latestSearch)
+          ? `批量查询-${latestSearch.keywords.join("-")}`
+          : latestSearch.keyword,
+        results: latestSearch.results,
+      });
+      const url = URL.createObjectURL(download.blob);
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = download.filename;
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      setExportState("idle");
+    } catch (error) {
+      setExportState("error");
+
+      if (error instanceof ApiRequestError && error.code === "MEMBERSHIP_REQUIRED") {
+        setExportError("导出 Excel/CSV 仅年会员可用。");
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "INVALID_EXPORT_REQUEST") {
+        setExportError("导出内容为空或格式不正确。");
+        return;
+      }
+
+      setExportError("导出失败，请稍后重试。");
     }
   }
 
@@ -1086,6 +1149,57 @@ export function App() {
                   </small>
                   {isAnnualMember ? <small>已自动去重并整理电话、地址格式</small> : null}
                 </div>
+
+                <div className="export-panel" role="note">
+                  <div>
+                    <strong>导出整理结果</strong>
+                    <span>仅在合法授权范围内使用，避免超范围留存或共享个人信息。</span>
+                  </div>
+                  {isAnnualMember ? (
+                    <div className="export-actions">
+                      <button
+                        type="button"
+                        disabled={exportState === "exporting" || latestSearch.results.length === 0}
+                        onClick={() => void handleExportResults("csv")}
+                      >
+                        {exportState === "exporting" ? (
+                          <Loader2 className="spin" size={16} />
+                        ) : (
+                          <Download size={16} />
+                        )}
+                        <span>CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={exportState === "exporting" || latestSearch.results.length === 0}
+                        onClick={() => void handleExportResults("excel")}
+                      >
+                        {exportState === "exporting" ? (
+                          <Loader2 className="spin" size={16} />
+                        ) : (
+                          <Download size={16} />
+                        )}
+                        <span>Excel</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="upgrade-action"
+                      onClick={() => setActiveRouteKey("membership")}
+                    >
+                      <Crown size={17} />
+                      <span>升级导出</span>
+                    </button>
+                  )}
+                </div>
+
+                {exportError ? (
+                  <p className="form-error" role="alert">
+                    <AlertCircle size={16} />
+                    {exportError}
+                  </p>
+                ) : null}
 
                 {visibleResults.length > 0 ? (
                   <div className="result-list" aria-label="查询结果">
