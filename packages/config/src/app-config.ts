@@ -28,9 +28,14 @@ export interface KeyEncryptionConfig {
 
 export interface PaymentConfig {
   provider?: string;
+  appId?: string;
+  merchantId?: string;
+  gatewayUrl?: string;
   webhookSecret?: string;
   returnUrl?: string;
   notifyUrl?: string;
+  annualPriceCents: number;
+  currency: string;
 }
 
 export interface MapProviderConfig {
@@ -77,9 +82,16 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     payment: {
       provider: readOptionalString(env, "PAYMENT_PROVIDER"),
+      appId: readOptionalString(env, "PAYMENT_APP_ID"),
+      merchantId: readOptionalString(env, "PAYMENT_MERCHANT_ID"),
+      gatewayUrl: readOptionalUrl(env, "PAYMENT_GATEWAY_URL"),
       webhookSecret: readOptionalString(env, "PAYMENT_WEBHOOK_SECRET"),
       returnUrl: readOptionalUrl(env, "PAYMENT_RETURN_URL"),
       notifyUrl: readOptionalUrl(env, "PAYMENT_NOTIFY_URL"),
+      annualPriceCents: readInteger(env, "MEMBERSHIP_ANNUAL_PRICE_CENTS", 19900, {
+        min: 1,
+      }),
+      currency: readOptionalString(env, "PAYMENT_CURRENCY") ?? "CNY",
     },
     maps: {
       amapApiKey: readOptionalString(env, "AMAP_API_KEY"),

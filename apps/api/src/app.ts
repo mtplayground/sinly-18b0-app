@@ -10,6 +10,7 @@ import { createApiRouter } from "./routes.js";
 import type { AuthServiceConfig } from "@sinly/config";
 import type { EmailServiceConfig } from "@sinly/config";
 import type { KeyEncryptionConfig } from "@sinly/config";
+import type { PaymentConfig } from "@sinly/config";
 import type { ServerConfig } from "@sinly/config";
 import type { Database } from "@sinly/db";
 
@@ -25,6 +26,7 @@ export interface AppDependencies {
   database: Database;
   email: EmailServiceConfig;
   keyEncryption: KeyEncryptionConfig;
+  payment: PaymentConfig;
 }
 
 export function createApp(config: ServerConfig, dependencies: AppDependencies): express.Express {
@@ -38,7 +40,23 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(compression());
   app.use(cookieParser());
-  app.use(express.json({ limit: "1mb" }));
+  app.use(
+    express.json({
+      limit: "1mb",
+      verify(req, _res, buffer) {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+      },
+    }),
+  );
+  app.use(
+    express.urlencoded({
+      extended: false,
+      limit: "1mb",
+      verify(req, _res, buffer) {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+      },
+    }),
+  );
 
   app.use(
     cors({
@@ -61,6 +79,7 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
       database: dependencies.database,
       email: dependencies.email,
       keyEncryption: dependencies.keyEncryption,
+      payment: dependencies.payment,
       server: config,
     }),
   );

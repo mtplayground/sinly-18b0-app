@@ -11,6 +11,8 @@ import type {
   KeywordSearchResponse,
   LoginResponse,
   MobileRouteDefinition,
+  PaymentOrderRequest,
+  PaymentOrderResponse,
   RegisterResponse,
   ResultExportFormat,
   ResultExportRequest,
@@ -147,6 +149,19 @@ export function searchByKeywords(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function createPaymentOrder(input: PaymentOrderRequest): Promise<PaymentOrderResponse> {
+  return requestJson<PaymentOrderResponse>("/api/payments/orders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getPaymentOrder(
+  orderId: string,
+): Promise<{ order: PaymentOrderResponse["order"] }> {
+  return requestJson<{ order: PaymentOrderResponse["order"] }>(`/api/payments/orders/${orderId}`);
 }
 
 function filenameFromDisposition(disposition: string | null, format: ResultExportFormat): string {

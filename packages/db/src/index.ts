@@ -18,6 +18,17 @@ export type {
   MembershipRecordStatus,
   MembershipStatusSnapshot,
 } from "./memberships.js";
+export { isPaymentProvider, PaymentOrderRepository } from "./payment-orders.js";
+export type {
+  CompletedPayment,
+  CompletePaymentInput,
+  CreatePaymentOrderInput,
+  FailPaymentInput,
+  PaymentCheckoutInput,
+  PaymentOrderRecord,
+  PaymentOrderStatus,
+  PaymentProvider,
+} from "./payment-orders.js";
 export { runMigrations } from "./migrations.js";
 export type { MigrationRecord } from "./migrations.js";
 export { PasswordResetTokenRepository } from "./password-reset-tokens.js";
