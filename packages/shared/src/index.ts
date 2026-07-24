@@ -11,6 +11,22 @@ export interface HealthResponse {
   };
 }
 
+export interface PublicUser {
+  sub: string;
+  email: string;
+  account: string;
+  name: string | null;
+  pictureUrl: string | null;
+  membershipStatus: "none" | "active" | "expired" | "cancelled";
+  registeredAt: string;
+  lastSeenAt: string;
+}
+
+export interface RegisterResponse {
+  registered: boolean;
+  user: PublicUser;
+}
+
 export type MobileRouteKey = "query" | "results" | "keys" | "membership" | "history" | "profile";
 
 export interface MobileRouteDefinition {

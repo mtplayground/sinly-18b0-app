@@ -1,4 +1,5 @@
 import compression from "compression";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
@@ -6,6 +7,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApiRouter } from "./routes.js";
+import type { AuthServiceConfig } from "@sinly/config";
 import type { ServerConfig } from "@sinly/config";
 import type { Database } from "@sinly/db";
 
@@ -17,6 +19,7 @@ function resolveWebDist(): string {
 }
 
 export interface AppDependencies {
+  auth: AuthServiceConfig;
   database: Database;
 }
 
@@ -30,6 +33,7 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
 
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(compression());
+  app.use(cookieParser());
   app.use(express.json({ limit: "1mb" }));
 
   app.use(
@@ -46,7 +50,14 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
     }),
   );
 
-  app.use("/api", createApiRouter(startedAt, version, { database: dependencies.database }));
+  app.use(
+    "/api",
+    createApiRouter(startedAt, version, {
+      auth: dependencies.auth,
+      database: dependencies.database,
+      server: config,
+    }),
+  );
 
   const webDist = resolveWebDist();
   if (existsSync(webDist)) {
