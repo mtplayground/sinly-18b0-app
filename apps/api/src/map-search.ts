@@ -300,6 +300,133 @@ function parseTencentLocation(value: unknown): {
   };
 }
 
+function normalizeText(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value
+    .replace(/\s+/g, " ")
+    .replace(/\s*([,，;；/])\s*/g, "$1")
+    .trim();
+  return normalized || null;
+}
+
+function normalizeName(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizePhone(value: string | null): string | null {
+  const text = normalizeText(value);
+  if (!text) {
+    return null;
+  }
+
+  const parts = text
+    .replace(/[|、，；;]/g, "/")
+    .split("/")
+    .map((part) =>
+      part
+        .replace(/[^\d+()（）-]/g, "")
+        .replace(/[（）]/g, (char) => (char === "（" ? "(" : ")"))
+        .replace(/-{2,}/g, "-")
+        .replace(/^-+|-+$/g, ""),
+    )
+    .filter(Boolean);
+
+  return parts.length > 0 ? [...new Set(parts)].join(" / ") : null;
+}
+
+function normalizeAddressPart(value: string | null): string | null {
+  const text = normalizeText(value);
+  if (!text) {
+    return null;
+  }
+
+  return text.replace(/\s+/g, "").replace(/[，,;；]+/g, "");
+}
+
+function normalizeAddress(result: MapPoiResult): string | null {
+  const address = normalizeAddressPart(result.address);
+  const regionParts = [result.province, result.city, result.district]
+    .map(normalizeAddressPart)
+    .filter((part): part is string => Boolean(part));
+
+  if (!address) {
+    return regionParts.join("") || null;
+  }
+
+  const prefix = regionParts.filter((part) => !address.includes(part)).join("");
+  return `${prefix}${address}` || null;
+}
+
+function compactIdentity(value: string | null): string | null {
+  const text = normalizeText(value);
+  return text ? text.toLowerCase().replace(/[^\p{Letter}\p{Number}]+/gu, "") : null;
+}
+
+function compactPhone(value: string | null): string | null {
+  const phone = normalizePhone(value);
+  return phone ? phone.replace(/[^\d+]/g, "") : null;
+}
+
+function formatResult(result: MapPoiResult): MapPoiResult | null {
+  const name = normalizeName(result.name);
+  if (!result.providerPoiId || !name) {
+    return null;
+  }
+
+  return {
+    ...result,
+    providerPoiId: result.providerPoiId.trim(),
+    name,
+    address: normalizeAddress(result),
+    province: normalizeAddressPart(result.province),
+    city: normalizeAddressPart(result.city),
+    district: normalizeAddressPart(result.district),
+    category: normalizeText(result.category),
+    contact: {
+      phone: normalizePhone(result.contact.phone),
+    },
+  };
+}
+
+function resultDedupeKey(result: MapPoiResult): string {
+  const name = compactIdentity(result.name);
+  const phone = compactPhone(result.contact.phone);
+  const address = compactIdentity(result.address);
+
+  if (name && phone) {
+    return `name-phone:${name}:${phone}`;
+  }
+
+  if (name && address) {
+    return `name-address:${name}:${address}`;
+  }
+
+  return `provider:${result.provider}:${result.providerPoiId}`;
+}
+
+function formatAndDedupeResults(results: MapPoiResult[]): MapPoiResult[] {
+  const seen = new Set<string>();
+  const formattedResults: MapPoiResult[] = [];
+
+  for (const result of results) {
+    const formatted = formatResult(result);
+    if (!formatted) {
+      continue;
+    }
+
+    const key = resultDedupeKey(formatted);
+    if (!seen.has(key)) {
+      seen.add(key);
+      formattedResults.push(formatted);
+    }
+  }
+
+  return formattedResults;
+}
+
 async function fetchProviderJson(provider: ApiKeyPlatform, url: URL): Promise<UnknownRecord> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), MAP_SEARCH_TIMEOUT_MS);
@@ -486,6 +613,8 @@ function buildResponse(
   total: number | null,
   results: MapPoiResult[],
 ): MapPoiSearchResponse {
+  const formattedResults = formatAndDedupeResults(results);
+
   return {
     platform: input.platform,
     keyword: input.keyword,
@@ -497,7 +626,7 @@ function buildResponse(
     page: input.page,
     pageSize: input.pageSize,
     total,
-    results: results.filter((result) => result.providerPoiId && result.name),
+    results: formattedResults,
   };
 }
 
@@ -532,26 +661,11 @@ async function runSingleSearch(
   return payload;
 }
 
-function resultDedupeKey(result: MapPoiResult): string {
-  return `${result.provider}:${result.providerPoiId}`;
-}
-
 function buildBatchResponse(
   input: BatchSearchInput,
   searches: MapPoiSearchResponse[],
 ): BatchKeywordSearchResponse {
-  const seen = new Set<string>();
-  const results: MapPoiResult[] = [];
-
-  for (const search of searches) {
-    for (const result of search.results) {
-      const key = resultDedupeKey(result);
-      if (!seen.has(key)) {
-        seen.add(key);
-        results.push(result);
-      }
-    }
-  }
+  const results = formatAndDedupeResults(searches.flatMap((search) => search.results));
 
   return {
     batch: true,
