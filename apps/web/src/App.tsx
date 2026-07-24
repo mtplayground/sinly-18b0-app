@@ -154,7 +154,7 @@ function routeDescription(route: MobileRouteDefinition): string {
     keys: "管理三平台 Key，并切换当前查询平台。",
     membership: "开通或续费年会员，解锁批量查询、整理与导出。",
     history: "查看云端同步的过往查询，并快速回看或再次发起。",
-    profile: "预留账号信息、设置与常用操作入口。",
+    profile: "查看账号资料、会员状态，并进入常用管理入口。",
   };
 
   return descriptions[route.key];
@@ -195,6 +195,39 @@ function paymentStatusLabel(order: PaymentOrderSummary | null): string {
   }
 
   return "待支付";
+}
+
+function membershipStatusLabel(status: PublicUser["membershipStatus"] | undefined): string {
+  if (status === "active") {
+    return "年会员";
+  }
+
+  if (status === "expired") {
+    return "已到期";
+  }
+
+  if (status === "cancelled") {
+    return "已取消";
+  }
+
+  return "免费账号";
+}
+
+function formatProfileDate(value: string | null | undefined): string {
+  if (!value) {
+    return "暂无";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "暂无";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 function formatHistoryTime(value: string): string {
@@ -1863,6 +1896,96 @@ export function App() {
                     </button>
                   </article>
                 ))}
+              </div>
+            )}
+          </section>
+        ) : activeRoute.key === "profile" ? (
+          <section className="profile-panel" aria-labelledby="profile-title">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">个人中心</p>
+                <h2 id="profile-title">我的账号</h2>
+              </div>
+              <div className={isAnnualMember ? "member-pill member-active" : "member-pill"}>
+                {isAnnualMember ? <Crown size={15} /> : <UserRound size={15} />}
+                <span>{membershipStatusLabel(user?.membershipStatus)}</span>
+              </div>
+            </div>
+
+            {user ? (
+              <>
+                <div className="profile-card">
+                  <div className="profile-avatar-large">
+                    {user.pictureUrl ? (
+                      <img src={user.pictureUrl} alt={userDisplayName(user)} />
+                    ) : (
+                      <UserRound size={28} />
+                    )}
+                  </div>
+                  <div className="profile-card-main">
+                    <strong>{userDisplayName(user)}</strong>
+                    <span>{user.email}</span>
+                    <small>账号 {user.account}</small>
+                  </div>
+                </div>
+
+                <div className="profile-stats" aria-label="账号状态">
+                  <div>
+                    <span>会员状态</span>
+                    <strong>{membershipStatusLabel(user.membershipStatus)}</strong>
+                  </div>
+                  <div>
+                    <span>到期时间</span>
+                    <strong>{formatProfileDate(user.membershipExpiresAt)}</strong>
+                  </div>
+                  <div>
+                    <span>注册时间</span>
+                    <strong>{formatProfileDate(user.registeredAt)}</strong>
+                  </div>
+                  <div>
+                    <span>最近同步</span>
+                    <strong>{formatProfileDate(user.lastSeenAt)}</strong>
+                  </div>
+                </div>
+
+                <div className="profile-membership" role="note">
+                  <div>{isAnnualMember ? <ShieldCheck size={20} /> : <Crown size={20} />}</div>
+                  <div>
+                    <strong>{isAnnualMember ? "会员权益已启用" : "当前为免费账号"}</strong>
+                    <span>
+                      {isAnnualMember
+                        ? "批量查询、整理、多 Key 与导出功能可直接使用。"
+                        : "开通年会员后可使用批量查询、结果整理与导出。"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="upgrade-action"
+                    onClick={() => setActiveRouteKey("membership")}
+                  >
+                    <Crown size={17} />
+                    <span>{isAnnualMember ? "续费" : "开通"}</span>
+                  </button>
+                </div>
+
+                <div className="profile-links" aria-label="快捷入口">
+                  <button type="button" onClick={() => setActiveRouteKey("keys")}>
+                    <KeyRound size={18} />
+                    <span>Key 管理</span>
+                    <ArrowRight size={16} />
+                  </button>
+                  <button type="button" onClick={() => setActiveRouteKey("history")}>
+                    <Clock3 size={18} />
+                    <span>查询历史</span>
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="empty-results">
+                <UserRound size={24} />
+                <strong>账号未同步</strong>
+                <span>请重新登录后查看个人中心。</span>
               </div>
             )}
           </section>
