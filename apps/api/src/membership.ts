@@ -54,7 +54,7 @@ export async function requireActiveMembership(
   res.status(403).json({
     error: {
       code: "MEMBERSHIP_REQUIRED",
-      message: "Active annual membership is required",
+      message: "该功能仅年会员可用，请开通或续费后继续。",
     },
   });
   return null;

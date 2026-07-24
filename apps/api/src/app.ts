@@ -108,7 +108,7 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
 
   app.use(
     (
-      err: Error & { code?: string; status?: number },
+      err: Error & { code?: string; publicMessage?: string; status?: number },
       _req: express.Request,
       res: express.Response,
       _next: express.NextFunction,
@@ -123,7 +123,9 @@ export function createApp(config: ServerConfig, dependencies: AppDependencies): 
       res.status(err.status ?? 500).json({
         error: {
           code: err.code ?? "INTERNAL_SERVER_ERROR",
-          message: "Request failed",
+          message:
+            err.publicMessage ??
+            (err.status && err.status < 500 ? err.message : "请求失败，请稍后重试。"),
         },
       });
     },

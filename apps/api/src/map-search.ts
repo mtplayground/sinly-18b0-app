@@ -38,16 +38,18 @@ type UnknownRecord = Record<string, unknown>;
 class MapProviderError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly publicMessage: string;
 
   constructor(
     provider: ApiKeyPlatform,
     message: string,
-    options: { status?: number; code?: string } = {},
+    options: { status?: number; code?: string; publicMessage?: string } = {},
   ) {
     super(`${provider} map search failed: ${message}`);
     this.name = "MapProviderError";
     this.status = options.status ?? 502;
     this.code = options.code ?? "MAP_PROVIDER_ERROR";
+    this.publicMessage = options.publicMessage ?? "地图服务暂时不可用，请稍后重试。";
   }
 }
 
@@ -213,8 +215,69 @@ function sendEncryptionUnavailable(res: Response): void {
   res.status(503).json({
     error: {
       code: "KEY_ENCRYPTION_NOT_CONFIGURED",
-      message: "API key encryption is not configured",
+      message: "Key 加密配置未启用，请联系管理员检查服务配置。",
     },
+  });
+}
+
+function providerFailure(
+  provider: ApiKeyPlatform,
+  message: string | null,
+  options: { status?: number; code?: string } = {},
+): MapProviderError {
+  const normalizedMessage = (message ?? "").toLowerCase();
+  const providerName =
+    provider === "amap" ? "高德" : provider === "baidu" ? "百度" : "腾讯位置服务";
+  const rawCode = options.code ?? "";
+  const rawCodeUpper = rawCode.toUpperCase();
+  const invalidKeySignals = new Set([
+    "10001",
+    "10002",
+    "10003",
+    "10007",
+    "10008",
+    "10009",
+    "20003",
+    "INVALID_USER_KEY",
+    "USERKEY_PLAT_NOMATCH",
+  ]);
+  const quotaSignals = new Set(["10004", "10010", "10014", "10029", "DAILY_QUERY_OVER_LIMIT"]);
+
+  if (
+    options.status === 401 ||
+    options.status === 403 ||
+    invalidKeySignals.has(rawCodeUpper) ||
+    normalizedMessage.includes("invalid") ||
+    normalizedMessage.includes("key") ||
+    normalizedMessage.includes("ak") ||
+    normalizedMessage.includes("签名")
+  ) {
+    return new MapProviderError(provider, message ?? "invalid API key", {
+      status: 400,
+      code: "MAP_API_KEY_INVALID",
+      publicMessage: `${providerName} Key 无效或未开通当前接口，请检查 Key 后重试。`,
+    });
+  }
+
+  if (
+    options.status === 429 ||
+    quotaSignals.has(rawCodeUpper) ||
+    normalizedMessage.includes("quota") ||
+    normalizedMessage.includes("limit") ||
+    normalizedMessage.includes("配额") ||
+    normalizedMessage.includes("超限")
+  ) {
+    return new MapProviderError(provider, message ?? "provider quota exceeded", {
+      status: 429,
+      code: "MAP_PROVIDER_QUOTA_EXCEEDED",
+      publicMessage: `${providerName} 官方额度已用尽或触发限频，请在平台控制台确认配额后再试。`,
+    });
+  }
+
+  return new MapProviderError(provider, message ?? "provider returned an error", {
+    status: options.status,
+    code: options.code,
+    publicMessage: `${providerName} 查询失败，请稍后重试或切换平台 Key。`,
   });
 }
 
@@ -447,8 +510,14 @@ async function fetchProviderJson(provider: ApiKeyPlatform, url: URL): Promise<Un
     });
 
     if (!response.ok) {
-      throw new MapProviderError(provider, `HTTP ${response.status}`, {
+      throw providerFailure(provider, `HTTP ${response.status}`, {
         status: response.status >= 500 ? 502 : 400,
+        code:
+          response.status === 429
+            ? "MAP_PROVIDER_QUOTA_EXCEEDED"
+            : response.status === 401 || response.status === 403
+              ? "MAP_API_KEY_INVALID"
+              : "MAP_PROVIDER_HTTP_ERROR",
       });
     }
 
@@ -467,10 +536,15 @@ async function fetchProviderJson(provider: ApiKeyPlatform, url: URL): Promise<Un
       throw new MapProviderError(provider, "request timed out", {
         code: "MAP_PROVIDER_TIMEOUT",
         status: 504,
+        publicMessage: "地图服务响应超时，请稍后重试。",
       });
     }
 
-    throw new MapProviderError(provider, "request failed");
+    throw new MapProviderError(provider, "request failed", {
+      code: "MAP_PROVIDER_NETWORK_ERROR",
+      status: 502,
+      publicMessage: "地图服务网络异常，请检查网络或稍后重试。",
+    });
   } finally {
     clearTimeout(timeout);
   }
@@ -497,7 +571,7 @@ async function searchAmap(input: ProviderSearchInput): Promise<MapPoiSearchRespo
 
   const payload = await fetchProviderJson("amap", url);
   if (asString(payload.status) !== "1") {
-    throw new MapProviderError("amap", asString(payload.info) ?? "provider returned an error", {
+    throw providerFailure("amap", asString(payload.info), {
       code: asString(payload.infocode) ?? "AMAP_PROVIDER_ERROR",
       status: 502,
     });
@@ -543,8 +617,8 @@ async function searchBaidu(input: ProviderSearchInput): Promise<MapPoiSearchResp
 
   const payload = await fetchProviderJson("baidu", url);
   if (asNumber(payload.status) !== 0) {
-    throw new MapProviderError("baidu", asString(payload.message) ?? "provider returned an error", {
-      code: "BAIDU_PROVIDER_ERROR",
+    throw providerFailure("baidu", asString(payload.message), {
+      code: `BAIDU_PROVIDER_${asString(payload.status) ?? "ERROR"}`,
       status: 502,
     });
   }
@@ -582,14 +656,10 @@ async function searchTencent(input: ProviderSearchInput): Promise<MapPoiSearchRe
 
   const payload = await fetchProviderJson("tencent", url);
   if (asNumber(payload.status) !== 0) {
-    throw new MapProviderError(
-      "tencent",
-      asString(payload.message) ?? "provider returned an error",
-      {
-        code: "TENCENT_PROVIDER_ERROR",
-        status: 502,
-      },
-    );
+    throw providerFailure("tencent", asString(payload.message), {
+      code: `TENCENT_PROVIDER_${asString(payload.status) ?? "ERROR"}`,
+      status: 502,
+    });
   }
 
   const results: MapPoiResult[] = asRecordArray(payload.data).map((poi) => {
@@ -756,7 +826,7 @@ export function createMapSearchHandler(dependencies: MapSearchRouterDependencies
         res.status(404).json({
           error: {
             code: "MAP_API_KEY_NOT_FOUND",
-            message: "No API key is configured for the selected map platform",
+            message: "当前平台未配置 Key，请先保存对应官方地图 Key。",
           },
         });
         return;
@@ -816,7 +886,7 @@ export function createBatchMapSearchHandler(
           res.status(404).json({
             error: {
               code: "MAP_API_KEY_NOT_FOUND",
-              message: "No API key is configured for the selected map platform",
+              message: "当前平台未配置 Key，请先保存对应官方地图 Key。",
             },
           });
           return;

@@ -52,6 +52,7 @@ export class ApiRequestError extends Error {
 export interface ResultExportDownload {
   blob: Blob;
   filename: string;
+  complianceNotice: string | null;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -179,6 +180,18 @@ function filenameFromDisposition(disposition: string | null, format: ResultExpor
   return match?.[1] ?? fallback;
 }
 
+function decodeHeaderValue(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export async function exportResults(input: ResultExportRequest): Promise<ResultExportDownload> {
   const response = await fetch("/api/exports/results", {
     method: "POST",
@@ -204,5 +217,6 @@ export async function exportResults(input: ResultExportRequest): Promise<ResultE
   return {
     blob: await response.blob(),
     filename: filenameFromDisposition(response.headers.get("Content-Disposition"), input.format),
+    complianceNotice: decodeHeaderValue(response.headers.get("X-Export-Compliance-Notice")),
   };
 }
