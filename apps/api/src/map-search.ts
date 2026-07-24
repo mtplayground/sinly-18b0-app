@@ -1,5 +1,10 @@
 import type { KeyEncryptionConfig, ServerConfig } from "@sinly/config";
-import { ApiKeyCipher, ApiKeyRepository, isApiKeyPlatform } from "@sinly/db";
+import {
+  ApiKeyCipher,
+  ApiKeyRepository,
+  isApiKeyPlatform,
+  SearchHistoryRepository,
+} from "@sinly/db";
 import type { ApiKeyPlatform, Database } from "@sinly/db";
 import { Router } from "express";
 import type { RequestHandler, Response } from "express";
@@ -686,8 +691,45 @@ function buildBatchResponse(
   };
 }
 
+async function recordSingleSearchHistory(
+  history: SearchHistoryRepository,
+  userSub: string,
+  payload: MapPoiSearchResponse,
+): Promise<void> {
+  await history.create({
+    userSub,
+    platform: payload.platform,
+    keyword: payload.keyword,
+    searchMode: "single",
+    province: payload.region.province,
+    city: payload.region.city,
+    district: payload.region.district,
+    resultCount: payload.results.length,
+    totalCount: payload.total,
+  });
+}
+
+async function recordBatchSearchHistory(
+  history: SearchHistoryRepository,
+  userSub: string,
+  payload: BatchKeywordSearchResponse,
+): Promise<void> {
+  await history.create({
+    userSub,
+    platform: payload.platform,
+    keyword: payload.keywords.join(" / "),
+    searchMode: "batch",
+    province: payload.region.province,
+    city: payload.region.city,
+    district: payload.region.district,
+    resultCount: payload.results.length,
+    totalCount: payload.total,
+  });
+}
+
 export function createMapSearchHandler(dependencies: MapSearchRouterDependencies): RequestHandler {
   const apiKeys = createRepository(dependencies);
+  const history = new SearchHistoryRepository(dependencies.database);
 
   return async (req, res, next) => {
     try {
@@ -720,6 +762,7 @@ export function createMapSearchHandler(dependencies: MapSearchRouterDependencies
         return;
       }
 
+      await recordSingleSearchHistory(history, authContext.user.sub, payload);
       res.json(payload);
     } catch (error) {
       next(error);
@@ -731,6 +774,7 @@ export function createBatchMapSearchHandler(
   dependencies: MapSearchRouterDependencies,
 ): RequestHandler {
   const apiKeys = createRepository(dependencies);
+  const history = new SearchHistoryRepository(dependencies.database);
 
   return async (req, res, next) => {
     try {
@@ -781,7 +825,9 @@ export function createBatchMapSearchHandler(
         searches.push(payload);
       }
 
-      res.json(buildBatchResponse(input, searches));
+      const payload = buildBatchResponse(input, searches);
+      await recordBatchSearchHistory(history, authContext.user.sub, payload);
+      res.json(payload);
     } catch (error) {
       next(error);
     }

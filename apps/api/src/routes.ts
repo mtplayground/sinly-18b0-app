@@ -15,6 +15,7 @@ import { createPasswordResetRouter } from "./auth/password-reset.js";
 import { createRegisterRouter } from "./auth/register.js";
 import { createSessionRouter } from "./auth/session-route.js";
 import { createExportRouter } from "./exports.js";
+import { createHistoryRouter } from "./history.js";
 import { createMapSearchRouter } from "./map-search.js";
 import { createPaymentRouter } from "./payments.js";
 import { createSearchRouter } from "./searches.js";
@@ -109,6 +110,14 @@ export function createApiRouter(
       auth: dependencies.auth,
       database: dependencies.database,
       payment: dependencies.payment,
+      server: dependencies.server,
+    }),
+  );
+  router.use(
+    "/history",
+    createHistoryRouter({
+      auth: dependencies.auth,
+      database: dependencies.database,
       server: dependencies.server,
     }),
   );

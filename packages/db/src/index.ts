@@ -37,6 +37,12 @@ export type {
   PasswordResetTokenRecord,
 } from "./password-reset-tokens.js";
 export { Repository } from "./repository.js";
+export { SearchHistoryRepository } from "./search-history.js";
+export type {
+  CreateSearchHistoryInput,
+  SearchHistoryMode,
+  SearchHistoryRecord,
+} from "./search-history.js";
 export { UserRepository } from "./users.js";
 export type {
   CreateUserInput,
