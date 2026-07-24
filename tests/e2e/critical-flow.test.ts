@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHmac, generateKeyPairSync } from "node:crypto";
+import { readFileSync } from "node:fs";
 import http from "node:http";
 import { test } from "node:test";
 import type { AddressInfo } from "node:net";
@@ -590,6 +591,15 @@ function createConfig(authUrl: string, appBaseUrl: string): AppConfig {
     maps: {},
   };
 }
+
+void test("guest login entry uses WeChat one-tap authorization copy", () => {
+  const appSource = readFileSync(new URL("../../apps/web/src/App.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /<h1 id="auth-title">微信授权登录<\/h1>/);
+  assert.match(appSource, /使用微信一键授权登录，登录成功后自动进入查询工具。/);
+  assert.match(appSource, /<span>微信一键授权登录<\/span>/);
+  assert.doesNotMatch(appSource, /使用平台账号登录/);
+});
 
 void test("critical registered-user POI flow from key setup through member export", async (t) => {
   const restoreFetch = installFetchMock();
