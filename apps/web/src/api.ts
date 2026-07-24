@@ -5,6 +5,8 @@ import type {
   ApiKeyResponse,
   ApiKeySaveRequest,
   HealthResponse,
+  KeywordSearchRequest,
+  KeywordSearchResponse,
   LoginResponse,
   MobileRouteDefinition,
   RegisterResponse,
@@ -119,5 +121,12 @@ export function updateApiKey(
 export function deleteApiKey(platform: ApiKeyPlatform): Promise<ApiKeyDeleteResponse> {
   return requestJson<ApiKeyDeleteResponse>(`/api/api-keys/${platform}`, {
     method: "DELETE",
+  });
+}
+
+export function searchByKeyword(input: KeywordSearchRequest): Promise<KeywordSearchResponse> {
+  return requestJson<KeywordSearchResponse>("/api/searches", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }

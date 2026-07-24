@@ -2,7 +2,7 @@ import type { KeyEncryptionConfig, ServerConfig } from "@sinly/config";
 import { ApiKeyCipher, ApiKeyRepository, isApiKeyPlatform } from "@sinly/db";
 import type { ApiKeyPlatform, Database } from "@sinly/db";
 import { Router } from "express";
-import type { Response } from "express";
+import type { RequestHandler, Response } from "express";
 import type { MapPoiResult, MapPoiSearchRequest, MapPoiSearchResponse } from "@sinly/shared";
 import type { AuthServiceConfig } from "@sinly/config";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "./auth/middleware.js";
@@ -13,7 +13,7 @@ const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE = 10;
 const MAX_PAGE_SIZE = 20;
 
-interface MapSearchRouterDependencies {
+export interface MapSearchRouterDependencies {
   auth: AuthServiceConfig;
   database: Database;
   keyEncryption: KeyEncryptionConfig;
@@ -46,6 +46,11 @@ interface ValidatedSearchInput {
   district: string | null;
   page: number;
   pageSize: number;
+}
+
+interface SearchInputValidation {
+  input: ValidatedSearchInput | null;
+  errors: string[];
 }
 
 interface ProviderSearchInput extends ValidatedSearchInput {
@@ -96,26 +101,38 @@ function readPositiveInteger(value: unknown, fallback: number, max: number): num
   return Math.min(parsed, max);
 }
 
-function validateSearchInput(body: unknown): ValidatedSearchInput | null {
+function validateSearchInput(body: unknown): SearchInputValidation {
   const request = readBody(body);
   const platform =
     typeof request.platform === "string" && isApiKeyPlatform(request.platform)
       ? request.platform
       : null;
   const keyword = readOptionalText(request.keyword, 80);
+  const errors: string[] = [];
 
-  if (!platform || !keyword) {
-    return null;
+  if (!platform) {
+    errors.push("platform must be one of amap, baidu, or tencent");
+  }
+
+  if (!keyword) {
+    errors.push("keyword is required");
+  }
+
+  if (errors.length > 0 || !platform || !keyword) {
+    return { input: null, errors };
   }
 
   return {
-    platform,
-    keyword,
-    province: readOptionalText(request.province, 40),
-    city: readOptionalText(request.city, 40),
-    district: readOptionalText(request.district, 40),
-    page: readPositiveInteger(request.page, DEFAULT_PAGE, MAX_PAGE),
-    pageSize: readPositiveInteger(request.pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE),
+    input: {
+      platform,
+      keyword,
+      province: readOptionalText(request.province, 40),
+      city: readOptionalText(request.city, 40),
+      district: readOptionalText(request.district, 40),
+      page: readPositiveInteger(request.page, DEFAULT_PAGE, MAX_PAGE),
+      pageSize: readPositiveInteger(request.pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE),
+    },
+    errors,
   };
 }
 
@@ -429,30 +446,23 @@ async function searchOfficialProvider(input: ProviderSearchInput): Promise<MapPo
   return searchTencent(input);
 }
 
-export function createMapSearchRouter(dependencies: MapSearchRouterDependencies): Router {
-  const router = Router();
+export function createMapSearchHandler(dependencies: MapSearchRouterDependencies): RequestHandler {
   const apiKeys = createRepository(dependencies);
-  const requireUser = requireAuthenticatedUser({
-    auth: dependencies.auth,
-    database: dependencies.database,
-    server: dependencies.server,
-  });
 
-  router.use(requireUser);
-
-  router.post("/poi", async (req, res, next) => {
+  return async (req, res, next) => {
     try {
       if (!apiKeys) {
         sendEncryptionUnavailable(res);
         return;
       }
 
-      const input = validateSearchInput(req.body);
+      const validation = validateSearchInput(req.body);
+      const input = validation.input;
       if (!input) {
         res.status(422).json({
           error: {
             code: "INVALID_MAP_SEARCH_REQUEST",
-            message: "Platform and keyword are required; platform must be amap, baidu, or tencent",
+            message: validation.errors.join("; "),
           },
         });
         return;
@@ -480,7 +490,19 @@ export function createMapSearchRouter(dependencies: MapSearchRouterDependencies)
     } catch (error) {
       next(error);
     }
+  };
+}
+
+export function createMapSearchRouter(dependencies: MapSearchRouterDependencies): Router {
+  const router = Router();
+  const requireUser = requireAuthenticatedUser({
+    auth: dependencies.auth,
+    database: dependencies.database,
+    server: dependencies.server,
   });
+
+  router.use(requireUser);
+  router.post("/poi", createMapSearchHandler(dependencies));
 
   return router;
 }
