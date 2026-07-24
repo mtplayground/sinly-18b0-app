@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ts
+coverage
+target
+package-lock.json
+.database_url
+.env.production
+.gh_token
+.progress

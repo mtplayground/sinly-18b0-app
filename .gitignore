@@ -1,5 +1,7 @@
 target/
 node_modules/
+dist/
+dist-ts/
 .gh_token
 .database_url
 .task_id
@@ -11,4 +13,3 @@ node_modules/
 .gitkeep
 .progress
 .env.production
-
