@@ -1,5 +1,14 @@
 export { loadDatabaseConfig } from "./config.js";
 export type { DatabaseConfig } from "./config.js";
+export { ApiKeyCipher, ApiKeyRepository, apiKeyPlatforms, isApiKeyPlatform } from "./api-keys.js";
+export type {
+  ApiKeyEncryptionConfig,
+  ApiKeyPlatform,
+  ApiKeyRecord,
+  ApiKeySecretRecord,
+  EncryptedApiKeyPayload,
+  SaveApiKeyInput,
+} from "./api-keys.js";
 export { Database } from "./database.js";
 export type { DatabaseHealth, QueryValue, QueryValues } from "./database.js";
 export { runMigrations } from "./migrations.js";
