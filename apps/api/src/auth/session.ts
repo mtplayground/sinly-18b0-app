@@ -6,7 +6,7 @@ import jwksClient from "jwks-rsa";
 
 export interface SessionClaims extends JwtPayload {
   sub: string;
-  email: string;
+  email?: string;
   email_verified?: boolean;
   name?: string;
   picture?: string;
@@ -39,7 +39,10 @@ function isSessionClaims(decoded: string | JwtPayload | undefined): decoded is S
     return false;
   }
 
-  return typeof decoded.sub === "string" && typeof decoded.email === "string";
+  return (
+    typeof decoded.sub === "string" &&
+    (decoded.email === undefined || typeof decoded.email === "string")
+  );
 }
 
 export async function verifySession(

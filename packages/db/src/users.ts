@@ -6,7 +6,7 @@ export type UserMembershipStatus = "none" | "active" | "expired" | "cancelled";
 
 export interface UserRecord {
   sub: string;
-  email: string;
+  email: string | null;
   account: string;
   passwordHash: string | null;
   name: string | null;
@@ -21,7 +21,7 @@ export interface UserRecord {
 
 export interface CreateUserInput {
   sub: string;
-  email: string;
+  email?: string | null;
   account?: string;
   passwordHash?: string | null;
   name?: string | null;
@@ -30,7 +30,7 @@ export interface CreateUserInput {
 
 export interface UpsertUserIdentityInput {
   sub: string;
-  email: string;
+  email?: string | null;
   account?: string;
   name?: string | null;
   pictureUrl?: string | null;
@@ -38,7 +38,7 @@ export interface UpsertUserIdentityInput {
 
 interface UserRow extends QueryResultRow {
   sub: string;
-  email: string;
+  email: string | null;
   account: string;
   password_hash: string | null;
   name: string | null;
@@ -89,8 +89,8 @@ export class UserRepository extends Repository {
       `,
       [
         input.sub,
-        input.email,
-        input.account ?? input.email,
+        input.email ?? null,
+        input.account ?? input.email ?? input.sub,
         input.passwordHash ?? null,
         input.name ?? null,
         input.pictureUrl ?? null,
@@ -113,7 +113,7 @@ export class UserRepository extends Repository {
         VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (sub)
         DO UPDATE SET
-          email = EXCLUDED.email,
+          email = COALESCE(EXCLUDED.email, users.email),
           account = EXCLUDED.account,
           name = EXCLUDED.name,
           picture_url = EXCLUDED.picture_url,
@@ -122,8 +122,8 @@ export class UserRepository extends Repository {
       `,
       [
         input.sub,
-        input.email,
-        input.account ?? input.email,
+        input.email ?? null,
+        input.account ?? input.email ?? input.sub,
         input.name ?? null,
         input.pictureUrl ?? null,
       ],

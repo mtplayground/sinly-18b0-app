@@ -7,7 +7,6 @@ import {
   buildLoginUrl,
   isAuthConfigured,
   isUniqueViolation,
-  isValidEmail,
   toPublicUser,
   upsertUserFromClaims,
 } from "./common.js";
@@ -44,17 +43,6 @@ export function createRegisterRouter(dependencies: RegisterRouterDependencies): 
             message: "Authentication is required",
           },
           loginUrl: buildLoginUrl(req, dependencies.server, dependencies.auth),
-        });
-        return;
-      }
-
-      const email = claims.email.toLowerCase();
-      if (!isValidEmail(email)) {
-        res.status(422).json({
-          error: {
-            code: "INVALID_EMAIL",
-            message: "Email format is invalid",
-          },
         });
         return;
       }

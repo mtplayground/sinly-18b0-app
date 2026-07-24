@@ -31,7 +31,7 @@ type DbClient = {
 
 interface UserRow extends Row {
   sub: string;
-  email: string;
+  email: string | null;
   account: string;
   password_hash: string | null;
   name: string | null;
@@ -204,8 +204,8 @@ class E2eDatabase {
     const existing = this.users.get(sub);
     const row: UserRow = {
       sub,
-      email: String(values[1]),
-      account: String(values[2] ?? values[1]),
+      email: values[1] === null ? null : String(values[1]),
+      account: String(values[2] ?? values[1] ?? sub),
       password_hash: existing?.password_hash ?? null,
       name: values[3] === null ? null : String(values[3]),
       picture_url: values[4] === null ? null : String(values[4]),
@@ -527,19 +527,24 @@ function authCookie(
   keyId: string,
   authUrl: string,
   appToken: string,
+  overrides: { sub?: string; email?: string | null; name?: string } = {},
 ): string {
-  const token = jwt.sign(
-    {
-      sub: "user-e2e-001",
-      email: "e2e@example.com",
-      name: "端到端测试用户",
-      picture: "https://example.com/e2e.png",
-      aud: appToken,
-      iss: authUrl,
-    },
-    privateKey,
-    { algorithm: "RS256", keyid: keyId, expiresIn: "1h" },
-  );
+  const claims: Record<string, unknown> = {
+    sub: overrides.sub ?? "user-e2e-001",
+    name: overrides.name ?? "端到端测试用户",
+    picture: "https://example.com/e2e.png",
+    aud: appToken,
+    iss: authUrl,
+  };
+  if (overrides.email !== null) {
+    claims.email = overrides.email ?? "e2e@example.com";
+  }
+
+  const token = jwt.sign(claims, privateKey, {
+    algorithm: "RS256",
+    keyid: keyId,
+    expiresIn: "1h",
+  });
   return `mctai_session=${token}`;
 }
 
@@ -634,6 +639,29 @@ void test("critical registered-user POI flow from key setup through member expor
   assert.equal(session.body.authenticated, true);
   assert.equal(session.body.user.email, "e2e@example.com");
   assert.equal(session.body.user.membershipStatus, "none");
+
+  const noEmailCookie = authCookie(
+    privateKey.export({ format: "pem", type: "pkcs8" }),
+    keyId,
+    jwksServer.url,
+    "app_e2e",
+    {
+      sub: "wechat-openid-e2e-001",
+      email: null,
+      name: "微信授权测试用户",
+    },
+  );
+  const noEmailSession = await readJson<SessionResponse>(
+    await request("/api/auth/session", {
+      headers: {
+        cookie: noEmailCookie,
+      },
+    }),
+  );
+  assert.equal(noEmailSession.status, 200);
+  assert.equal(noEmailSession.body.authenticated, true);
+  assert.equal(noEmailSession.body.user.email, null);
+  assert.equal(noEmailSession.body.user.account, "wechat-openid-e2e-001");
 
   const keySave = await readJson<ApiKeyResponse>(
     await request("/api/api-keys", {
