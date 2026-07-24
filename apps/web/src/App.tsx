@@ -38,6 +38,7 @@ import type {
   PublicUser,
   RegionSelection,
   ResultExportFormat,
+  SearchHistoryItem,
 } from "@sinly/shared";
 import { apiKeyPlatforms, chinaRegions, findRegionSelection, mobileRoutes } from "@sinly/shared";
 import {
@@ -48,6 +49,7 @@ import {
   exportResults,
   getPaymentOrder,
   getSession,
+  listSearchHistory,
   listApiKeys,
   loadHealth,
   loadMobileShell,
@@ -68,6 +70,7 @@ type QueryState = "idle" | "searching" | "done" | "error";
 type QueryMode = "single" | "batch";
 type ExportState = "idle" | "exporting" | "error";
 type PaymentState = "idle" | "creating" | "pending" | "checking" | "paid" | "error";
+type HistoryState = "idle" | "loading" | "ready" | "error";
 
 interface ApiKeyFormState {
   apiKey: string;
@@ -150,7 +153,7 @@ function routeDescription(route: MobileRouteDefinition): string {
     results: "展示去重后的查询结果，并对电话、地址等字段做格式整理。",
     keys: "管理三平台 Key，并切换当前查询平台。",
     membership: "开通或续费年会员，解锁批量查询、整理与导出。",
-    history: "预留查询历史筛选与复用入口。",
+    history: "查看云端同步的过往查询，并快速回看或再次发起。",
     profile: "预留账号信息、设置与常用操作入口。",
   };
 
@@ -192,6 +195,52 @@ function paymentStatusLabel(order: PaymentOrderSummary | null): string {
   }
 
   return "待支付";
+}
+
+function formatHistoryTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "时间未知";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function historyRegionLabel(item: SearchHistoryItem): string {
+  return [item.region.province, item.region.city, item.region.district].filter(Boolean).join(" / ");
+}
+
+function splitHistoryKeywords(item: SearchHistoryItem): string[] {
+  return item.keyword
+    .split("/")
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+}
+
+function findRegionCodesByNames(item: SearchHistoryItem): {
+  provinceCode: string;
+  cityCode: string;
+  countyCode: string;
+} {
+  const province =
+    chinaRegions.find((region) => region.name === item.region.province) ?? defaultProvince;
+  const city =
+    province.cities.find((regionCity) => regionCity.name === item.region.city) ??
+    firstOrThrow(province.cities, "At least one city must be defined");
+  const county =
+    city.counties.find((regionCounty) => regionCounty.name === item.region.district) ??
+    firstOrThrow(city.counties, "At least one county must be defined");
+
+  return {
+    provinceCode: province.code,
+    cityCode: city.code,
+    countyCode: county.code,
+  };
 }
 
 function statusLabel(apiState: ApiState): string {
@@ -277,6 +326,9 @@ export function App() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   const [paymentOrder, setPaymentOrder] = useState<PaymentOrderSummary | null>(null);
+  const [historyState, setHistoryState] = useState<HistoryState>("idle");
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -364,6 +416,44 @@ export function App() {
       cancelled = true;
     };
   }, [authStatus]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") {
+      setSearchHistory([]);
+      setHistoryState("idle");
+      return;
+    }
+
+    if (activeRouteKey !== "history") {
+      return;
+    }
+
+    let cancelled = false;
+    setHistoryState("loading");
+    setHistoryError(null);
+
+    listSearchHistory()
+      .then((payload) => {
+        if (!cancelled) {
+          setSearchHistory(payload.history);
+          setHistoryState("ready");
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setHistoryState("error");
+          setHistoryError(
+            error instanceof ApiRequestError && error.loginUrl
+              ? "请先登录后查看查询历史。"
+              : "查询历史加载失败，请稍后重试。",
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRouteKey, authStatus]);
 
   const activeRoute = useMemo(
     () =>
@@ -737,6 +827,107 @@ export function App() {
       }
 
       setPaymentError("支付状态刷新失败，请稍后重试。");
+    }
+  }
+
+  function applyHistoryToQuery(item: SearchHistoryItem) {
+    const regionCodes = findRegionCodesByNames(item);
+    setSelectedPlatform(item.platform);
+    setSelectedProvinceCode(regionCodes.provinceCode);
+    setSelectedCityCode(regionCodes.cityCode);
+    setSelectedCountyCode(regionCodes.countyCode);
+    setQueryError(null);
+    setQueryState("idle");
+
+    if (item.searchMode === "batch") {
+      setQueryMode("batch");
+      setBatchKeywords(splitHistoryKeywords(item).join("\n"));
+    } else {
+      setQueryMode("single");
+      setKeyword(item.keyword);
+    }
+
+    setActiveRouteKey("query");
+  }
+
+  async function handleReplayHistory(item: SearchHistoryItem) {
+    const regionCodes = findRegionCodesByNames(item);
+    const replayRegion = findRegionSelection(
+      regionCodes.provinceCode,
+      regionCodes.cityCode,
+      regionCodes.countyCode,
+    );
+    const replayKey = keyByPlatform(apiKeys, item.platform);
+
+    applyHistoryToQuery(item);
+
+    if (!replayKey) {
+      setQueryState("error");
+      setQueryError(`当前平台未配置 Key，请先在 Key 页保存${platformLabels[item.platform]} Key。`);
+      return;
+    }
+
+    if (item.searchMode === "batch" && !isAnnualMember) {
+      setQueryState("error");
+      setQueryError("批量关键词查询仅年会员可用。");
+      return;
+    }
+
+    setQueryState("searching");
+    setQueryError(null);
+
+    try {
+      if (item.searchMode === "batch") {
+        const keywords = splitHistoryKeywords(item);
+        const payload = await searchByKeywords({
+          platform: item.platform,
+          keywords,
+          province: replayRegion.province.name,
+          city: replayRegion.city.name,
+          district: replayRegion.county.name,
+          pageSize: 20,
+        });
+
+        setLatestSearch(payload);
+      } else {
+        const payload = await searchByKeyword({
+          platform: item.platform,
+          keyword: item.keyword,
+          province: replayRegion.province.name,
+          city: replayRegion.city.name,
+          district: replayRegion.county.name,
+          page: 1,
+          pageSize: 20,
+        });
+
+        setLatestSearch(payload);
+      }
+
+      setExportError(null);
+      setExportState("idle");
+      setQueryState("done");
+      setActiveRouteKey("results");
+    } catch (error) {
+      setQueryState("error");
+
+      if (error instanceof ApiRequestError && error.loginUrl) {
+        setQueryError("请先登录后再查询。");
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "MAP_API_KEY_NOT_FOUND") {
+        setQueryError(
+          `当前平台未配置 Key，请先在 Key 页保存${platformLabels[item.platform]} Key。`,
+        );
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.code === "MEMBERSHIP_REQUIRED") {
+        setQueryError("批量关键词查询仅年会员可用。");
+        return;
+      }
+
+      setQueryError("再次查询失败，请稍后重试。");
     }
   }
 
@@ -1566,6 +1757,114 @@ export function App() {
                 </p>
               ) : null}
             </div>
+          </section>
+        ) : activeRoute.key === "history" ? (
+          <section className="history-panel" aria-labelledby="history-title">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">云端同步</p>
+                <h2 id="history-title">查询历史</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-action"
+                title="刷新历史"
+                aria-label="刷新历史"
+                disabled={historyState === "loading"}
+                onClick={() => {
+                  setHistoryState("loading");
+                  setHistoryError(null);
+                  void listSearchHistory()
+                    .then((payload) => {
+                      setSearchHistory(payload.history);
+                      setHistoryState("ready");
+                    })
+                    .catch(() => {
+                      setHistoryState("error");
+                      setHistoryError("查询历史加载失败，请稍后重试。");
+                    });
+                }}
+              >
+                {historyState === "loading" ? (
+                  <Loader2 className="spin" size={17} />
+                ) : (
+                  <RefreshCw size={17} />
+                )}
+              </button>
+            </div>
+
+            <p className="panel-copy">{routeDescription(activeRoute)}</p>
+
+            {historyError ? (
+              <p className="form-error" role="alert">
+                <AlertCircle size={16} />
+                {historyError}
+              </p>
+            ) : null}
+
+            {historyState === "loading" ? (
+              <div className="empty-results">
+                <Loader2 className="spin" size={24} />
+                <strong>正在加载历史</strong>
+                <span>同步当前账号的云端查询记录。</span>
+              </div>
+            ) : searchHistory.length === 0 ? (
+              <div className="empty-results">
+                <Clock3 size={24} />
+                <strong>暂无查询历史</strong>
+                <span>完成一次关键词查询后会自动保存到云端。</span>
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() => setActiveRouteKey("query")}
+                >
+                  <Search size={17} />
+                  <span>去查询</span>
+                </button>
+              </div>
+            ) : (
+              <div className="history-list" aria-label="查询历史记录">
+                {searchHistory.map((item) => (
+                  <article className="history-card" key={item.id}>
+                    <button
+                      type="button"
+                      className="history-main"
+                      onClick={() => applyHistoryToQuery(item)}
+                    >
+                      <div className="history-icon">
+                        {item.searchMode === "batch" ? (
+                          <MapPinned size={18} />
+                        ) : (
+                          <Search size={18} />
+                        )}
+                      </div>
+                      <div className="history-content">
+                        <div className="history-head">
+                          <strong>{item.keyword}</strong>
+                          <span>{formatHistoryTime(item.createdAt)}</span>
+                        </div>
+                        <span>
+                          {platformLabels[item.platform]} · {historyRegionLabel(item) || "全部区域"}
+                        </span>
+                        <small>
+                          {item.searchMode === "batch" ? "批量查询" : "关键词查询"} · 返回{" "}
+                          {item.resultCount} 条
+                          {item.totalCount !== null ? ` / 官方总数 ${item.totalCount}` : ""}
+                        </small>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="history-rerun"
+                      onClick={() => void handleReplayHistory(item)}
+                    >
+                      <RefreshCw size={16} />
+                      <span>再次查询</span>
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
         ) : (
           <div className="panel">

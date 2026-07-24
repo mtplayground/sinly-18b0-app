@@ -16,6 +16,7 @@ import type {
   RegisterResponse,
   ResultExportFormat,
   ResultExportRequest,
+  SearchHistoryListResponse,
   SessionResponse,
 } from "@sinly/shared";
 
@@ -162,6 +163,10 @@ export function getPaymentOrder(
   orderId: string,
 ): Promise<{ order: PaymentOrderResponse["order"] }> {
   return requestJson<{ order: PaymentOrderResponse["order"] }>(`/api/payments/orders/${orderId}`);
+}
+
+export function listSearchHistory(limit = 50): Promise<SearchHistoryListResponse> {
+  return requestJson<SearchHistoryListResponse>(`/api/history?limit=${limit}`);
 }
 
 function filenameFromDisposition(disposition: string | null, format: ResultExportFormat): string {
