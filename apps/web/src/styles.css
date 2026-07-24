@@ -19,16 +19,38 @@
   box-sizing: border-box;
 }
 
+html {
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(21, 126, 115, 0.32);
+  outline-offset: 2px;
 }
 
 .app-shell {
@@ -1702,9 +1724,165 @@ h2 {
   }
 }
 
+@media (max-width: 480px) {
+  .app-shell {
+    padding: max(10px, env(safe-area-inset-top)) 12px calc(82px + env(safe-area-inset-bottom));
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    align-items: center;
+    margin: calc(-1 * max(10px, env(safe-area-inset-top))) -12px 12px;
+    padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+    background: rgba(238, 243, 242, 0.92);
+    backdrop-filter: blur(14px);
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  h2 {
+    font-size: 20px;
+  }
+
+  .profile-strip {
+    min-height: 58px;
+    padding: 8px 10px;
+  }
+
+  .profile-strip img,
+  .avatar-fallback {
+    width: 40px;
+    height: 40px;
+  }
+
+  .platform-switcher {
+    position: sticky;
+    top: calc(52px + env(safe-area-inset-top));
+    z-index: 7;
+    margin: 0 -12px 12px;
+    padding: 0 12px 8px;
+    background: rgba(238, 243, 242, 0.9);
+    backdrop-filter: blur(14px);
+  }
+
+  .platform-option {
+    min-height: 48px;
+    padding: 7px 6px;
+    text-align: center;
+  }
+
+  .query-panel,
+  .region-panel,
+  .auth-panel,
+  .payment-box,
+  .membership-plan,
+  .key-card,
+  .profile-card,
+  .profile-membership,
+  .profile-stats > div,
+  .benefit-item,
+  .history-card,
+  .result-card,
+  .export-panel,
+  .locked-results,
+  .empty-results {
+    padding: 12px;
+  }
+
+  .section-heading,
+  .key-card-head,
+  .payment-box-head,
+  .payment-order-strip,
+  .plan-top,
+  .history-head {
+    gap: 8px;
+  }
+
+  .sync-pill,
+  .member-pill,
+  .status-pill {
+    min-height: 28px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .region-current,
+  .search-arrival {
+    padding: 10px;
+  }
+
+  .keyword-input-row {
+    grid-template-columns: minmax(0, 1fr) 48px;
+  }
+
+  .keyword-input-row input,
+  .query-submit {
+    min-height: 48px;
+  }
+
+  .result-card {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .result-rank {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
+
+  .result-content p {
+    font-size: 12px;
+  }
+
+  .locked-results,
+  .profile-membership {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .locked-results > div:first-child,
+  .profile-membership > div:first-child {
+    width: 34px;
+    height: 34px;
+  }
+
+  .profile-stats,
+  .payment-provider-grid,
+  .export-actions {
+    gap: 7px;
+  }
+
+  .payment-order-meta span,
+  .profile-card-main span,
+  .profile-card-main small,
+  .profile-stats strong,
+  .history-content span,
+  .history-content small {
+    white-space: normal;
+  }
+
+  .bottom-tabs {
+    min-height: calc(64px + env(safe-area-inset-bottom));
+    padding: 6px 6px max(6px, env(safe-area-inset-bottom));
+  }
+
+  .tab {
+    min-height: 50px;
+    gap: 3px;
+  }
+
+  .tab span {
+    font-size: 11px;
+  }
+}
+
 @media (max-width: 380px) {
   h1 {
-    font-size: 26px;
+    font-size: 23px;
   }
 
   .status-pill {
