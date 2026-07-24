@@ -1,9 +1,9 @@
-import { Database, loadDatabaseConfig, runMigrations } from "@sinly/db";
+import { loadAppConfig } from "@sinly/config";
+import { Database, runMigrations } from "@sinly/db";
 import { createApp } from "./app.js";
-import { loadConfig } from "./config.js";
 
-const config = loadConfig();
-const database = new Database(loadDatabaseConfig());
+const config = loadAppConfig();
+const database = new Database(config.database);
 
 try {
   const migrations = await runMigrations(database);
@@ -11,9 +11,9 @@ try {
     console.log(`Database migrations applied: ${migrations.length}`);
   }
 
-  const app = createApp(config, { database });
-  const server = app.listen(config.port, config.host, () => {
-    console.log(`API server listening on http://${config.host}:${config.port}`);
+  const app = createApp(config.server, { database });
+  const server = app.listen(config.server.port, config.server.host, () => {
+    console.log(`API server listening on http://${config.server.host}:${config.server.port}`);
   });
 
   const shutdown = (signal: NodeJS.Signals) => {

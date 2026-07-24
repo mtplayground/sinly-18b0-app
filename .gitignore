@@ -2,6 +2,9 @@ target/
 node_modules/
 dist/
 dist-ts/
+.env
+.env.local
+.env.*.local
 .gh_token
 .database_url
 .task_id

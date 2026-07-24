@@ -15,6 +15,7 @@ npm install
 npm run build
 npm run lint
 npm run format
+npm run config:check
 npm run db:migrate
 npm run db:check
 npm run dev
@@ -27,3 +28,4 @@ npm start
 ```
 
 Database commands require `DATABASE_URL` to point at PostgreSQL.
+Copy `.env.example` for local development values; do not commit real secrets.
