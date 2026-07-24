@@ -142,6 +142,27 @@ export interface BatchKeywordSearchResponse extends MapPoiSearchResponse {
   searches: MapPoiSearchResponse[];
 }
 
+export type SearchHistoryMode = "single" | "batch";
+
+export interface SearchHistoryItem {
+  id: string;
+  platform: ApiKeyPlatform;
+  keyword: string;
+  searchMode: SearchHistoryMode;
+  region: {
+    province: string | null;
+    city: string | null;
+    district: string | null;
+  };
+  resultCount: number;
+  totalCount: number | null;
+  createdAt: string;
+}
+
+export interface SearchHistoryListResponse {
+  history: SearchHistoryItem[];
+}
+
 export type ResultExportFormat = "csv" | "excel";
 
 export interface ResultExportRequest {
